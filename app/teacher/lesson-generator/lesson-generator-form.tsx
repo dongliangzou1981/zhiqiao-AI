@@ -2,132 +2,26 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import {
-  juniorMathKnowledgeBase,
-  type Chapter,
-  type Grade,
-  type KnowledgePoint,
-  type Semester,
-  type Textbook,
-} from "@/data/junior-math";
+import { juniorMathKnowledgeBase } from "@/data/junior-math";
+import { LessonPlanMarkdown } from "./lesson-plan-markdown";
 
-type LessonContext = {
-  textbook: Textbook;
-  grade: Grade;
-  semester: Semester;
-  chapter: Chapter;
-  knowledgePoint: KnowledgePoint;
+type LessonPlanMeta = {
+  textbookName: string;
+  subject: string;
+  version: string;
+  grade: string;
+  semester: string;
+  chapter: string;
+  code: string;
+  name: string;
 };
 
-type LessonFlowStep = {
-  phase: string;
-  duration: string;
-  teacher: string;
-  student: string;
-};
-
-export type MockLessonPlan = {
-  meta: {
-    textbookName: string;
-    subject: string;
-    version: string;
-    grade: string;
-    semester: string;
-    chapter: string;
-    chapterCode: string;
-    knowledgePointCode: string;
-    knowledgePointName: string;
-    knowledgePointDescription: string;
-  };
-  objectives: string[];
-  keyPoints: string[];
-  difficulties: { point: string; strategy: string }[];
-  flow: LessonFlowStep[];
-  interactions: string[];
-  homework: string[];
+type LessonPlanResult = {
+  meta: LessonPlanMeta;
+  lessonPlan: string;
 };
 
 const { textbook, grades } = juniorMathKnowledgeBase;
-
-function generateMockLessonPlan(ctx: LessonContext): MockLessonPlan {
-  const { textbook: tb, grade, semester, chapter, knowledgePoint: kp } = ctx;
-  const unitLabel = `${chapter.name}（${chapter.code}）`;
-
-  return {
-    meta: {
-      textbookName: tb.name,
-      subject: tb.subject,
-      version: tb.version,
-      grade: grade.name,
-      semester: semester.name,
-      chapter: chapter.name,
-      chapterCode: chapter.code,
-      knowledgePointCode: kp.code,
-      knowledgePointName: kp.name,
-      knowledgePointDescription: kp.description,
-    },
-    objectives: [
-      `理解「${kp.name}」的核心概念：${kp.description}`,
-      `能运用${kp.name}解决${grade.name}${tb.subject}典型例题，正确率达 80% 以上。`,
-      `在小组讨论中归纳${kp.name}与${chapter.name}已学内容的联系，形成知识网络。`,
-      `养成验算与反思习惯，能说出与${kp.name}相关的常见错误及纠正方法。`,
-    ],
-    keyPoints: [
-      `${kp.name}的定义与适用条件（${kp.code}）`,
-      `结合「${chapter.name}」中的例题掌握基本解题步骤`,
-      `依据课标要求落实：${kp.description}`,
-    ],
-    difficulties: [
-      {
-        point: `在「${kp.name}」学习中，符号与法则综合应用时易出错`,
-        strategy:
-          "通过对比练习与错例辨析，引导学生分步操作，强化概念与运算的对应关系",
-      },
-      {
-        point: "文字应用题审题不清，数量关系难以转化为方程或算式",
-        strategy:
-          "标注已知、未知与关系句，配合线段图或表格辅助建模，回扣本课知识点",
-      },
-    ],
-    flow: [
-      {
-        phase: "导入",
-        duration: "5 分钟",
-        teacher: `出示与「${kp.name}」相关的生活情境，引出${grade.name}${semester.name}·${chapter.name}的学习需求`,
-        student: "观察情境、提出猜想，联系已学经验",
-      },
-      {
-        phase: "新授",
-        duration: "15 分钟",
-        teacher: `讲解${tb.version}${tb.subject}中「${kp.name}」概念（${kp.code}），板书要点，示范 2 道例题`,
-        student: "跟练、笔记，同桌互说概念含义",
-      },
-      {
-        phase: "练习",
-        duration: "15 分钟",
-        teacher: "巡视点拨，组织板演与讲评，针对易错点即时纠正",
-        student: "独立完成分层练习（基础题 + 提高题）",
-      },
-      {
-        phase: "小结",
-        duration: "5 分钟",
-        teacher: `归纳「${kp.name}」知识框架，布置课后巩固`,
-        student: "完成自我评价单，明确薄弱点",
-      },
-    ],
-    interactions: [
-      `抢答：「${kp.name}」与${chapter.name}其他内容的联系是什么？`,
-      "四人小组：每人出一道变式题，组内交换解答并互评",
-      "数轴 / 图示操作：直观验证与本课相关的猜想",
-      "「我来当小老师」：学生上台讲解一道错题的订正过程",
-    ],
-    homework: [
-      `完成${tb.name} · ${chapter.name} · ${kp.name} 相关练习（必做 3 题，选做 1 题）`,
-      `用思维导图整理「${kp.name}」与本周已学内容的关系`,
-      `学情薄弱学生：回看课堂例题，完成针对性巩固单（教师另行发放）`,
-    ],
-  };
-}
 
 const selectClassName =
   "mt-1.5 w-full rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-violet-400 focus:bg-white focus:ring-2 focus:ring-violet-500/20 disabled:cursor-not-allowed disabled:opacity-50";
@@ -160,7 +54,7 @@ export function LessonGeneratorForm() {
   const [semesterId, setSemesterId] = useState(defaultSemesterId);
   const [chapterId, setChapterId] = useState("");
   const [knowledgePointId, setKnowledgePointId] = useState("");
-  const [plan, setPlan] = useState<MockLessonPlan | null>(null);
+  const [plan, setPlan] = useState<LessonPlanResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -178,39 +72,39 @@ export function LessonGeneratorForm() {
     [chapter, knowledgePointId]
   );
 
-  const handleGradeChange = (id: string) => {
-    const nextGrade = grades.find((g) => g.id === id);
-    const nextSemesterId = nextGrade?.semesters[0]?.id ?? "";
-    setGradeId(id);
-    setSemesterId(nextSemesterId);
-    setChapterId("");
-    setKnowledgePointId("");
+  const resetPlan = () => {
     setError(null);
     setPlan(null);
+  };
+
+  const handleGradeChange = (id: string) => {
+    const nextGrade = grades.find((g) => g.id === id);
+    setGradeId(id);
+    setSemesterId(nextGrade?.semesters[0]?.id ?? "");
+    setChapterId("");
+    setKnowledgePointId("");
+    resetPlan();
   };
 
   const handleSemesterChange = (id: string) => {
     setSemesterId(id);
     setChapterId("");
     setKnowledgePointId("");
-    setError(null);
-    setPlan(null);
+    resetPlan();
   };
 
   const handleChapterChange = (id: string) => {
     setChapterId(id);
     setKnowledgePointId("");
-    setError(null);
-    setPlan(null);
+    resetPlan();
   };
 
   const handleKnowledgePointChange = (id: string) => {
     setKnowledgePointId(id);
-    setError(null);
-    setPlan(null);
+    resetPlan();
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!grade || !semester || !chapter || !knowledgePoint) {
@@ -219,21 +113,49 @@ export function LessonGeneratorForm() {
       return;
     }
 
-    const ctx: LessonContext = {
-      textbook,
-      grade,
-      semester,
-      chapter,
-      knowledgePoint,
-    };
-
     setLoading(true);
     setError(null);
+    setPlan(null);
 
-    window.setTimeout(() => {
-      setPlan(generateMockLessonPlan(ctx));
+    try {
+      const res = await fetch("/api/lesson-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: knowledgePoint.code,
+          name: knowledgePoint.name,
+          description: knowledgePoint.description,
+        }),
+      });
+
+      const data = (await res.json()) as { lessonPlan?: string; error?: string };
+
+      if (!res.ok) {
+        throw new Error(data.error ?? "生成教案失败，请稍后重试");
+      }
+
+      if (!data.lessonPlan) {
+        throw new Error("未收到教案内容");
+      }
+
+      setPlan({
+        meta: {
+          textbookName: textbook.name,
+          subject: textbook.subject,
+          version: textbook.version,
+          grade: grade.name,
+          semester: semester.name,
+          chapter: chapter.name,
+          code: knowledgePoint.code,
+          name: knowledgePoint.name,
+        },
+        lessonPlan: data.lessonPlan,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "生成教案失败，请稍后重试");
+    } finally {
       setLoading(false);
-    }, 600);
+    }
   };
 
   return (
@@ -257,13 +179,13 @@ export function LessonGeneratorForm() {
                   AI教案生成
                 </h1>
                 <p className="text-sm text-slate-500">
-                  从知识库选择知识点，一键生成结构化教案（演示数据）
+                  从知识库选择知识点，由 DeepSeek 生成结构化教案
                 </p>
               </div>
             </div>
           </div>
-          <span className="shrink-0 rounded-full bg-violet-100 px-3 py-1 text-xs font-medium text-violet-700 ring-1 ring-violet-200/80">
-            Mock 模式
+          <span className="shrink-0 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200/80">
+            DeepSeek
           </span>
         </div>
       </header>
@@ -405,7 +327,7 @@ export function LessonGeneratorForm() {
                 disabled={loading || !knowledgePoint}
                 className="mt-6 w-full rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-md shadow-violet-500/25 transition hover:from-violet-700 hover:to-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {loading ? "生成中…" : "生成教案"}
+                {loading ? "DeepSeek 生成中…" : "生成教案"}
               </button>
             </div>
 
@@ -438,19 +360,20 @@ export function LessonGeneratorForm() {
                 <p className="mt-4 text-sm font-medium text-slate-600">
                   选择知识点后点击「生成教案」
                 </p>
-                <p className="mt-1 text-xs text-slate-400">教案将显示在右侧预览区</p>
+                <p className="mt-1 text-xs text-slate-400">教案将由 DeepSeek 生成并显示在右侧</p>
               </div>
             )}
 
             {loading && (
               <div className="flex min-h-[320px] flex-col items-center justify-center rounded-2xl border border-slate-200/80 bg-white p-8 shadow-sm">
                 <div className="h-10 w-10 animate-spin rounded-full border-2 border-violet-200 border-t-violet-600" />
-                <p className="mt-4 text-sm text-slate-500">正在生成教案…</p>
+                <p className="mt-4 text-sm text-slate-500">正在调用 DeepSeek 生成教案…</p>
+                <p className="mt-1 text-xs text-slate-400">通常需要 10–30 秒</p>
               </div>
             )}
 
             {plan && !loading && (
-              <article className="space-y-6">
+              <article className="space-y-4">
                 <div className="rounded-2xl border border-violet-200/60 bg-gradient-to-br from-violet-50 to-white p-6 shadow-sm shadow-slate-200/50">
                   <h2 className="text-lg font-bold text-slate-900">教案预览</h2>
                   <p className="mt-2 text-sm text-slate-600">
@@ -458,87 +381,19 @@ export function LessonGeneratorForm() {
                     {plan.meta.version}
                   </p>
                   <p className="text-sm text-slate-500">
-                    {plan.meta.chapter} · {plan.meta.knowledgePointName}
+                    {plan.meta.chapter} · {plan.meta.name}
                   </p>
                   <code className="mt-2 inline-block rounded-md bg-white/80 px-2 py-0.5 font-mono text-xs text-violet-800 ring-1 ring-violet-200/60">
-                    {plan.meta.knowledgePointCode}
+                    {plan.meta.code}
                   </code>
                 </div>
 
-                <Section title="教学目标" accent="violet">
-                  <ul className="list-inside list-decimal space-y-2 text-sm leading-relaxed text-slate-700">
-                    {plan.objectives.map((item, i) => (
-                      <li key={i}>{item}</li>
-                    ))}
-                  </ul>
-                </Section>
-
-                <Section title="教学重点" accent="indigo">
-                  <ul className="list-inside list-disc space-y-1.5 text-sm text-slate-700">
-                    {plan.keyPoints.map((item, i) => (
-                      <li key={i}>{item}</li>
-                    ))}
-                  </ul>
-                </Section>
-
-                <Section title="教学难点" accent="amber">
-                  <ul className="space-y-4">
-                    {plan.difficulties.map((item, i) => (
-                      <li key={i} className="rounded-lg bg-amber-50/80 p-4 text-sm">
-                        <p className="font-medium text-slate-800">难点：{item.point}</p>
-                        <p className="mt-2 text-slate-600">
-                          <span className="font-medium text-amber-800">突破：</span>
-                          {item.strategy}
-                        </p>
-                      </li>
-                    ))}
-                  </ul>
-                </Section>
-
-                <Section title="教学流程" accent="sky">
-                  <ol className="space-y-4">
-                    {plan.flow.map((step, i) => (
-                      <li
-                        key={i}
-                        className="rounded-xl border border-slate-100 bg-slate-50/50 p-4 text-sm"
-                      >
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="rounded-md bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-800">
-                            {step.phase}
-                          </span>
-                          <span className="text-xs text-slate-400">{step.duration}</span>
-                        </div>
-                        <p className="mt-2 text-slate-700">
-                          <span className="font-medium text-slate-800">教师：</span>
-                          {step.teacher}
-                        </p>
-                        <p className="mt-1 text-slate-600">
-                          <span className="font-medium text-slate-800">学生：</span>
-                          {step.student}
-                        </p>
-                      </li>
-                    ))}
-                  </ol>
-                </Section>
-
-                <Section title="课堂互动" accent="emerald">
-                  <ul className="list-inside list-disc space-y-2 text-sm text-slate-700">
-                    {plan.interactions.map((item, i) => (
-                      <li key={i}>{item}</li>
-                    ))}
-                  </ul>
-                </Section>
-
-                <Section title="课后巩固" accent="rose">
-                  <ul className="list-inside list-disc space-y-2 text-sm text-slate-700">
-                    {plan.homework.map((item, i) => (
-                      <li key={i}>{item}</li>
-                    ))}
-                  </ul>
-                </Section>
+                <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm shadow-slate-200/50">
+                  <LessonPlanMarkdown content={plan.lessonPlan} />
+                </div>
 
                 <p className="text-center text-xs text-slate-400">
-                  以上为 Mock 生成内容，接入 DeepSeek API 后将使用真实模型输出
+                  由 DeepSeek 生成 · 请结合学情调整后使用
                 </p>
               </article>
             )}
@@ -546,34 +401,5 @@ export function LessonGeneratorForm() {
         </div>
       </main>
     </div>
-  );
-}
-
-function Section({
-  title,
-  accent,
-  children,
-}: {
-  title: string;
-  accent: "violet" | "indigo" | "amber" | "sky" | "emerald" | "rose";
-  children: React.ReactNode;
-}) {
-  const bar: Record<string, string> = {
-    violet: "bg-violet-500",
-    indigo: "bg-indigo-500",
-    amber: "bg-amber-500",
-    sky: "bg-sky-500",
-    emerald: "bg-emerald-500",
-    rose: "bg-rose-500",
-  };
-
-  return (
-    <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm shadow-slate-200/50">
-      <div className="mb-4 flex items-center gap-2">
-        <span className={`h-5 w-1 rounded-full ${bar[accent]}`} />
-        <h3 className="text-base font-semibold text-slate-900">{title}</h3>
-      </div>
-      {children}
-    </section>
   );
 }
