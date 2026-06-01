@@ -3,7 +3,7 @@ import { LessonGeneratorForm } from "./lesson-generator-form";
 
 export const metadata: Metadata = {
   title: "AI教案生成 · 知桥AI",
-  description: "根据学科、年级、教材版本与知识点生成结构化教案",
+  description: "从知识库选择知识点，生成结构化教案（Mock 演示）",
 };
 
 export default function LessonGeneratorPage() {

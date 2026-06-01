@@ -59,7 +59,7 @@
 
 | 任务 | 说明 |
 |------|------|
-| OpenAI API | 服务端 Route Handler 调用，密钥仅存服务端；流式输出可选 |
+| DeepSeek API | 服务端 Route Handler 调用，密钥仅存服务端；流式输出可选；使用 OpenAI 兼容客户端 |
 | Prompt 管理 | `prompts/` 目录版本化；参数注入与输出 JSON/Markdown 解析 |
 | 知识库最小集 | Supabase 表：教材、单元、知识点（可先手工录入种子数据） |
 | 生成记录 | 教案、讲解、答疑会话落库，供教师回看与学生历史 |
@@ -69,7 +69,7 @@
 ### 数据与流程
 
 ```
-教材/知识点（Supabase）→ 组装 Prompt → OpenAI → 结果存储 → 教师端/学生端展示
+教材/知识点（Supabase）→ 组装 Prompt → DeepSeek → 结果存储 → 教师端/学生端展示
 ```
 
 ### 交付物
@@ -87,7 +87,7 @@
 ### 依赖
 
 - 第一阶段登录与角色体系完成
-- OpenAI API 配额与模型选型确定（如 `gpt-4o` / `gpt-4o-mini`）
+- DeepSeek API 配额与模型选型确定（默认 `deepseek-v4-flash`，高阶 `deepseek-v4-pro`）
 
 ### 预估周期
 
@@ -146,7 +146,7 @@
 | 前端框架 | Next.js | SSR/路由、API Route、统一部署 |
 | 语言 | TypeScript | 类型安全、前后端共享类型 |
 | 后端与数据 | Supabase | Auth、PostgreSQL、Realtime（按需）、Storage（课件/附件后续） |
-| AI | OpenAI API | 教案、讲解、答疑生成 |
+| AI | DeepSeek API | 教案、讲解、答疑生成 |
 | 部署 | Vercel 或同类 | 与 Next.js 生态契合；环境变量管理 |
 
 ### 建议目录结构（随阶段演进）
@@ -158,9 +158,29 @@ app/
   student/         # 学生端
   api/             # AI 与业务 API
 components/
-lib/               # Supabase client、OpenAI 封装
+lib/               # Supabase client、DeepSeek（OpenAI 兼容）封装
 prompts/           # Prompt 模板
 docs/              # 产品与开发文档
+```
+
+### AI 服务（DeepSeek）
+
+| 配置项 | 值 |
+|--------|-----|
+| Provider | DeepSeek |
+| Base URL | `https://api.deepseek.com` |
+| 默认模型 | `deepseek-v4-flash`（答疑、轻量生成、高频调用） |
+| 高阶模型 | `deepseek-v4-pro`（教案、长文本、复杂讲解） |
+
+> **说明**：DeepSeek API 与 [OpenAI SDK](https://github.com/openai/openai-node) 兼容，项目可通过 OpenAI 兼容客户端配置接入（设置 `baseURL` 与 `apiKey`），无需单独引入另一套 SDK。
+
+建议环境变量（`.env.example`）：
+
+```
+DEEPSEEK_API_KEY=
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL_DEFAULT=deepseek-v4-flash
+DEEPSEEK_MODEL_ADVANCED=deepseek-v4-pro
 ```
 
 ### 安全与合规要点

@@ -26,6 +26,13 @@ const todos = [
 
 const aiTools = [
   {
+    id: "knowledge-base",
+    title: "知识库",
+    description: "查看教材、章节与知识点结构",
+    accent: "from-cyan-600 to-indigo-600",
+    href: "/teacher/knowledge-base",
+  },
+  {
     id: "lesson-plan",
     title: "AI教案生成",
     description: "按知识点一键生成教学目标与课堂流程",
