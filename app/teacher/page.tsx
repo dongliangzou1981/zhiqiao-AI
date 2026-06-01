@@ -40,6 +40,13 @@ const aiTools = [
     href: "/teacher/lesson-generator",
   },
   {
+    id: "lesson-history",
+    title: "教案历史",
+    description: "查看历史生成教案",
+    accent: "from-rose-500 to-pink-600",
+    href: "/teacher/lesson-history",
+  },
+  {
     id: "slides",
     title: "AI课件生成",
     description: "结构化大纲转课件要点与互动页",

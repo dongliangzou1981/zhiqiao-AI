@@ -22,10 +22,6 @@ const WELCOME_TEXT = `你好，我是知桥AI学习助手。
 
 今天想先了解哪一部分？`;
 
-const EXAMPLE_NEGATIVE_MINUS = `负数表示一个小于0的数，例如 -3。
-减号表示运算符，例如 5 - 3 = 2。
-虽然符号相同，但含义不同。`;
-
 const CHAT_CONTAINER = "mx-auto w-full max-w-[900px] px-4";
 
 function formatTime(date = new Date()) {
@@ -45,40 +41,6 @@ function createWelcomeMessage(): ChatMessage {
   };
 }
 
-function generateMockResponse(question: string): string {
-  const normalized = question.replace(/\s/g, "");
-
-  if (
-    (normalized.includes("负数") && normalized.includes("减号")) ||
-    (normalized.includes("负数") && normalized.includes("负号")) ||
-    (normalized.includes("负号") && normalized.includes("减号"))
-  ) {
-    return EXAMPLE_NEGATIVE_MINUS;
-  }
-
-  if (normalized.includes("去括号") || normalized.includes("括号")) {
-    return `去括号时记住口诀：括号前是「+」，去括号不变号；括号前是「−」，去括号要变号。
-
-例如：+(a + b) = a + b，-(a + b) = -a - b。
-
-你可以先标出括号前的符号，再逐项检查每一项是否变号。`;
-  }
-
-  if (normalized.includes("负数") && normalized.includes("相乘")) {
-    return `有理数乘法法则：同号得正，异号得负。
-
-所以两个负数相乘：负 × 负 = 正。例如 (-2) × (-3) = 6。
-
-建议用具体数字多算几组，体会规律后再记结论。`;
-  }
-
-  return `关于「${question.length > 20 ? `${question.slice(0, 20)}…` : question}」：
-
-建议你先回顾课本中相关定义，把已知条件写下来；再判断是概念理解问题还是计算步骤问题。
-
-如果是概念题，可以各举一个例子对比；如果是计算题，分步书写并验算。仍有疑问可以继续追问具体哪一步不理解。`;
-}
-
 function AssistantIcon() {
   return (
     <div
@@ -94,11 +56,10 @@ function TypingIndicator() {
   return (
     <div className="flex items-end gap-2">
       <AssistantIcon />
-      <div className="rounded-2xl rounded-bl-md border border-slate-200/80 bg-slate-100 px-4 py-3">
-        <div className="flex items-center gap-1.5">
-          <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400 [animation-delay:0ms]" />
-          <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400 [animation-delay:150ms]" />
-          <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400 [animation-delay:300ms]" />
+      <div className="flex max-w-[80%] flex-col items-start">
+        <span className="mb-1 px-1 text-xs font-medium text-slate-500">知桥AI</span>
+        <div className="rounded-2xl rounded-bl-md border border-slate-200/80 bg-slate-100 px-4 py-3 text-sm text-slate-500">
+          AI正在思考…
         </div>
       </div>
     </div>
@@ -161,7 +122,7 @@ export function QaChat() {
     return () => window.clearTimeout(t);
   }, [messages, loading]);
 
-  const sendMessage = (text: string) => {
+  const sendMessage = async (text: string) => {
     const question = text.trim();
     if (!question || loading) {
       if (!question) {
@@ -184,16 +145,35 @@ export function QaChat() {
     setMessages((prev) => [...prev, userMessage]);
     setLoading(true);
 
-    window.setTimeout(() => {
+    try {
+      const res = await fetch("/api/student-qa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question }),
+      });
+
+      const data = (await res.json()) as { answer?: string; error?: string };
+
+      if (!res.ok) {
+        throw new Error(data.error ?? "答疑失败，请稍后重试");
+      }
+
+      if (!data.answer) {
+        throw new Error("未收到回答");
+      }
+
       const aiMessage: ChatMessage = {
         id: createId(),
         role: "assistant",
-        content: generateMockResponse(question),
+        content: data.answer,
         time: formatTime(),
       };
       setMessages((prev) => [...prev, aiMessage]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "答疑失败，请稍后重试");
+    } finally {
       setLoading(false);
-    }, 800);
+    }
   };
 
   const handleSuggestedClick = (q: string) => {

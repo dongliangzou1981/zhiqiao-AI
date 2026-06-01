@@ -14,11 +14,16 @@ function requireEnv(name: string): string {
   return value;
 }
 
-function getClient(): OpenAI {
+/** DeepSeek 客户端（OpenAI 兼容），供其他模块复用 */
+export function getDeepSeekClient(): OpenAI {
   return new OpenAI({
     apiKey: requireEnv("DEEPSEEK_API_KEY"),
     baseURL: requireEnv("DEEPSEEK_BASE_URL"),
   });
+}
+
+export function getDeepSeekModel(): string {
+  return requireEnv("DEEPSEEK_MODEL");
 }
 
 function buildUserPrompt(params: GenerateLessonPlanParams): string {
@@ -60,8 +65,8 @@ const SYSTEM_PROMPT =
  * 调用 DeepSeek（OpenAI 兼容接口）生成 K12 教案 Markdown。
  */
 export async function generateLessonPlan(params: GenerateLessonPlanParams): Promise<string> {
-  const client = getClient();
-  const model = requireEnv("DEEPSEEK_MODEL");
+  const client = getDeepSeekClient();
+  const model = getDeepSeekModel();
 
   const response = await client.chat.completions.create({
     model,

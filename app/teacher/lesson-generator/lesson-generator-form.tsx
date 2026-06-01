@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { juniorMathKnowledgeBase } from "@/data/junior-math";
+import { createLessonHistoryId, saveLessonHistory } from "@/lib/lesson-history";
 import { LessonPlanMarkdown } from "./lesson-plan-markdown";
 
 type LessonPlanMeta = {
@@ -56,6 +57,7 @@ export function LessonGeneratorForm() {
   const [knowledgePointId, setKnowledgePointId] = useState("");
   const [plan, setPlan] = useState<LessonPlanResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [savedHint, setSavedHint] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const grade = useMemo(() => grades.find((g) => g.id === gradeId), [gradeId]);
@@ -74,6 +76,7 @@ export function LessonGeneratorForm() {
 
   const resetPlan = () => {
     setError(null);
+    setSavedHint(false);
     setPlan(null);
   };
 
@@ -115,6 +118,7 @@ export function LessonGeneratorForm() {
 
     setLoading(true);
     setError(null);
+    setSavedHint(false);
     setPlan(null);
 
     try {
@@ -137,6 +141,15 @@ export function LessonGeneratorForm() {
       if (!data.lessonPlan) {
         throw new Error("未收到教案内容");
       }
+
+      saveLessonHistory({
+        id: createLessonHistoryId(),
+        knowledgePointCode: knowledgePoint.code,
+        knowledgePointName: knowledgePoint.name,
+        createdAt: new Date().toISOString(),
+        content: data.lessonPlan,
+      });
+      setSavedHint(true);
 
       setPlan({
         meta: {
@@ -319,6 +332,15 @@ export function LessonGeneratorForm() {
               {error && (
                 <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600" role="alert">
                   {error}
+                </p>
+              )}
+
+              {savedHint && (
+                <p
+                  className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 ring-1 ring-emerald-200/80"
+                  role="status"
+                >
+                  已保存到教案历史
                 </p>
               )}
 
