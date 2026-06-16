@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { juniorMathKnowledgeBase } from "@/data/junior-math";
-import { createLessonHistoryId, saveLessonHistory } from "@/lib/lesson-history";
 import { LessonPlanMarkdown } from "./lesson-plan-markdown";
 
 type LessonPlanMeta = {
@@ -20,6 +19,10 @@ type LessonPlanMeta = {
 type LessonPlanResult = {
   meta: LessonPlanMeta;
   lessonPlan: string;
+};
+
+type LessonGeneratorFormProps = {
+  modelLabel: string;
 };
 
 const { textbook, grades } = juniorMathKnowledgeBase;
@@ -46,7 +49,16 @@ function IconSparkles() {
   );
 }
 
-export function LessonGeneratorForm() {
+function buildCoursewareHref(code: string) {
+  const params = new URLSearchParams({
+    knowledgePointCode: code,
+    source: "lesson-plan",
+  });
+
+  return `/teacher/courseware?${params.toString()}`;
+}
+
+export function LessonGeneratorForm({ modelLabel }: LessonGeneratorFormProps) {
   const defaultGradeId = grades[0]?.id ?? "";
   const defaultGrade = grades.find((g) => g.id === defaultGradeId);
   const defaultSemesterId = defaultGrade?.semesters[0]?.id ?? "";
@@ -132,7 +144,11 @@ export function LessonGeneratorForm() {
         }),
       });
 
-      const data = (await res.json()) as { lessonPlan?: string; error?: string };
+      const data = (await res.json()) as {
+        lessonPlan?: string;
+        record?: { id: string; created_at: string };
+        error?: string;
+      };
 
       if (!res.ok) {
         throw new Error(data.error ?? "生成教案失败，请稍后重试");
@@ -142,13 +158,6 @@ export function LessonGeneratorForm() {
         throw new Error("未收到教案内容");
       }
 
-      saveLessonHistory({
-        id: createLessonHistoryId(),
-        knowledgePointCode: knowledgePoint.code,
-        knowledgePointName: knowledgePoint.name,
-        createdAt: new Date().toISOString(),
-        content: data.lessonPlan,
-      });
       setSavedHint(true);
 
       setPlan({
@@ -192,13 +201,13 @@ export function LessonGeneratorForm() {
                   AI教案生成
                 </h1>
                 <p className="text-sm text-slate-500">
-                  从知识库选择知识点，由 DeepSeek 生成结构化教案
+                  从知识库选择知识点，由 {modelLabel} 生成结构化教案
                 </p>
               </div>
             </div>
           </div>
           <span className="shrink-0 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200/80">
-            DeepSeek
+            {modelLabel}
           </span>
         </div>
       </header>
@@ -336,12 +345,20 @@ export function LessonGeneratorForm() {
               )}
 
               {savedHint && (
-                <p
-                  className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 ring-1 ring-emerald-200/80"
+                <div
+                  className="mt-4 space-y-3 rounded-xl bg-emerald-50 px-3 py-3 text-sm text-emerald-800 ring-1 ring-emerald-200/80"
                   role="status"
                 >
-                  已保存到教案历史
-                </p>
+                  <p>已保存到教案历史。</p>
+                  {knowledgePoint ? (
+                    <Link
+                      href={buildCoursewareHref(knowledgePoint.code)}
+                      className="inline-flex w-full items-center justify-center rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700"
+                    >
+                      根据本教案生成课件
+                    </Link>
+                  ) : null}
+                </div>
               )}
 
               <button
@@ -349,7 +366,7 @@ export function LessonGeneratorForm() {
                 disabled={loading || !knowledgePoint}
                 className="mt-6 w-full rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-md shadow-violet-500/25 transition hover:from-violet-700 hover:to-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {loading ? "DeepSeek 生成中…" : "生成教案"}
+                {loading ? `${modelLabel} 生成中...` : "生成教案"}
               </button>
             </div>
 
@@ -382,14 +399,14 @@ export function LessonGeneratorForm() {
                 <p className="mt-4 text-sm font-medium text-slate-600">
                   选择知识点后点击「生成教案」
                 </p>
-                <p className="mt-1 text-xs text-slate-400">教案将由 DeepSeek 生成并显示在右侧</p>
+                <p className="mt-1 text-xs text-slate-400">教案将由 {modelLabel} 生成并显示在右侧</p>
               </div>
             )}
 
             {loading && (
               <div className="flex min-h-[320px] flex-col items-center justify-center rounded-2xl border border-slate-200/80 bg-white p-8 shadow-sm">
                 <div className="h-10 w-10 animate-spin rounded-full border-2 border-violet-200 border-t-violet-600" />
-                <p className="mt-4 text-sm text-slate-500">正在调用 DeepSeek 生成教案…</p>
+                <p className="mt-4 text-sm text-slate-500">正在调用 {modelLabel} 生成教案...</p>
                 <p className="mt-1 text-xs text-slate-400">通常需要 10–30 秒</p>
               </div>
             )}
@@ -397,17 +414,31 @@ export function LessonGeneratorForm() {
             {plan && !loading && (
               <article className="space-y-4">
                 <div className="rounded-2xl border border-violet-200/60 bg-gradient-to-br from-violet-50 to-white p-6 shadow-sm shadow-slate-200/50">
-                  <h2 className="text-lg font-bold text-slate-900">教案预览</h2>
-                  <p className="mt-2 text-sm text-slate-600">
-                    {plan.meta.grade} · {plan.meta.semester} · {plan.meta.subject} ·{" "}
-                    {plan.meta.version}
+                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <h2 className="text-lg font-bold text-slate-900">教案预览</h2>
+                      <p className="mt-2 text-sm text-slate-600">
+                        {plan.meta.grade} · {plan.meta.semester} · {plan.meta.subject} ·{" "}
+                        {plan.meta.version}
+                      </p>
+                      <p className="text-sm text-slate-500">
+                        {plan.meta.chapter} · {plan.meta.name}
+                      </p>
+                      <code className="mt-2 inline-block rounded-md bg-white/80 px-2 py-0.5 font-mono text-xs text-violet-800 ring-1 ring-violet-200/60">
+                        {plan.meta.code}
+                      </code>
+                    </div>
+                    <Link
+                      href={buildCoursewareHref(plan.meta.code)}
+                      className="inline-flex shrink-0 items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+                    >
+                      用本知识点生成课件
+                    </Link>
+                  </div>
+                  <p className="mt-4 rounded-xl border border-indigo-100 bg-white/70 px-4 py-3 text-sm leading-6 text-slate-600">
+                    下一步会进入 AI 课件生成，并自动选中当前知识点。当前先生成可保存、可发布的课件内容；
+                    HTML/PPT 与动态演示会在后续课件能力升级中接入。
                   </p>
-                  <p className="text-sm text-slate-500">
-                    {plan.meta.chapter} · {plan.meta.name}
-                  </p>
-                  <code className="mt-2 inline-block rounded-md bg-white/80 px-2 py-0.5 font-mono text-xs text-violet-800 ring-1 ring-violet-200/60">
-                    {plan.meta.code}
-                  </code>
                 </div>
 
                 <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm shadow-slate-200/50">
@@ -415,7 +446,7 @@ export function LessonGeneratorForm() {
                 </div>
 
                 <p className="text-center text-xs text-slate-400">
-                  由 DeepSeek 生成 · 请结合学情调整后使用
+                  由 {modelLabel} 生成，请结合学情调整后使用
                 </p>
               </article>
             )}

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { generateLessonPlan } from "@/lib/deepseek";
+import { getProfile } from "@/lib/auth/profile";
+import { generateLessonPlan } from "@/lib/lesson-plan";
+import { createClient } from "@/lib/supabase/server";
 
 export const maxDuration = 60;
 
@@ -11,6 +13,21 @@ type RequestBody = {
 
 export async function POST(request: Request) {
   try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return NextResponse.json({ error: "请先登录" }, { status: 401 });
+    }
+
+    const profile = await getProfile(supabase, user.id);
+    if (!profile || profile.role !== "teacher") {
+      return NextResponse.json({ error: "仅教师账号可生成教案" }, { status: 403 });
+    }
+
     const body = (await request.json()) as RequestBody;
     const code = body.code?.trim();
     const name = body.name?.trim();
@@ -27,8 +44,22 @@ export async function POST(request: Request) {
     }
 
     const lessonPlan = await generateLessonPlan({ code, name, description });
+    const { data: savedRecord, error: saveError } = await supabase
+      .from("lesson_plans")
+      .insert({
+        user_id: user.id,
+        knowledge_point_code: code,
+        knowledge_point_name: name,
+        content: lessonPlan,
+      })
+      .select("id, created_at")
+      .single();
 
-    return NextResponse.json({ lessonPlan });
+    if (saveError) {
+      throw saveError;
+    }
+
+    return NextResponse.json({ lessonPlan, record: savedRecord });
   } catch (err) {
     console.error("[lesson-plan]", err);
     return NextResponse.json(

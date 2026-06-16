@@ -1,31 +1,35 @@
-import { getDeepSeekClient, getDeepSeekModel } from "@/lib/deepseek";
+import { readFile } from "fs/promises";
+import path from "path";
+import { getAIClient, getAIModel } from "@/lib/ai";
 
 export type GenerateStudentAnswerParams = {
   question: string;
 };
 
-function buildUserPrompt(question: string): string {
-  return `学生问题：
+const SYSTEM_PROMPT =
+  "你是知桥AI的 K12 学习助手，擅长把基础知识讲清楚，帮助初中生独立理解问题。";
 
-${question.trim()}
+let cachedPromptTemplate: string | null = null;
 
-请用 Markdown 格式作答。`;
+async function getPromptTemplate() {
+  if (cachedPromptTemplate) {
+    return cachedPromptTemplate;
+  }
+
+  const promptPath = path.join(process.cwd(), "prompts", "student-qa.md");
+  cachedPromptTemplate = await readFile(promptPath, "utf8");
+  return cachedPromptTemplate;
 }
 
-const SYSTEM_PROMPT = `你是一位 K12 学习助手，面向中国初中生答疑解惑。
-
-请遵守以下规则：
-- 使用中文回答
-- 分步骤讲解，层次清晰
-- 鼓励理解思路，而非死记硬背
-- 语言适合初中生阅读，亲切但不幼稚
-- 若涉及数学，写出推理过程与关键算式，步骤完整
-- 最后用「## 小结」做一两句话的简短总结
-
-仅输出 Markdown 正文，不要多余寒暄。`;
+function replaceAll(input: string, replacements: Record<string, string>) {
+  return Object.entries(replacements).reduce(
+    (content, [key, value]) => content.replaceAll(`{${key}}`, value),
+    input
+  );
+}
 
 /**
- * 调用 DeepSeek 生成学生答疑 Markdown。
+ * 调用统一 AI 模型网关生成学生答疑 Markdown。
  */
 export async function generateStudentAnswer(
   params: GenerateStudentAnswerParams
@@ -35,21 +39,23 @@ export async function generateStudentAnswer(
     throw new Error("question is required");
   }
 
-  const client = getDeepSeekClient();
-  const model = getDeepSeekModel();
+  const client = await getAIClient();
+  const model = getAIModel("student-qa");
+  const promptTemplate = await getPromptTemplate();
+  const userPrompt = replaceAll(promptTemplate, { question });
 
   const response = await client.chat.completions.create({
     model,
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: buildUserPrompt(question) },
+      { role: "user", content: userPrompt },
     ],
     temperature: 0.7,
   });
 
   const markdown = response.choices[0]?.message?.content?.trim();
   if (!markdown) {
-    throw new Error("DeepSeek API returned an empty answer");
+    throw new Error("AI model returned an empty answer");
   }
 
   return markdown;

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { signOutAction } from "@/app/auth/actions";
 
 const todos = [
   {
@@ -17,9 +18,9 @@ const todos = [
   },
   {
     id: "analytics",
-    label: "待查看学情",
+    label: "待查看数据",
     count: 2,
-    hint: "期中测验反馈",
+    hint: "练习与复习反馈",
     href: "/teacher/analytics",
   },
 ];
@@ -54,6 +55,20 @@ const aiTools = [
     href: "/teacher/courseware",
   },
   {
+    id: "courseware-history",
+    title: "课件历史",
+    description: "查看已生成的知识点导向课件",
+    accent: "from-blue-500 to-cyan-600",
+    href: "/teacher/courseware-history",
+  },
+  {
+    id: "courseware-library",
+    title: "课件资源库",
+    description: "沉淀已确认课件，供学生端低成本复用",
+    accent: "from-teal-500 to-emerald-600",
+    href: "/teacher/courseware-library",
+  },
+  {
     id: "explain",
     title: "AI知识点讲解",
     description: "分步讲解、例题与易错点提示",
@@ -62,10 +77,24 @@ const aiTools = [
   },
   {
     id: "analytics",
-    title: "学情分析",
-    description: "班级掌握度、完成率与薄弱知识点",
+    title: "学习数据",
+    description: "查看学生练习、复习与知识点反馈",
     accent: "from-amber-500 to-orange-600",
     href: "/teacher/analytics",
+  },
+  {
+    id: "students",
+    title: "学生范围",
+    description: "管理可查看学习数据的学生",
+    accent: "from-slate-600 to-slate-800",
+    href: "/teacher/students",
+  },
+  {
+    id: "model-settings",
+    title: "AI模型设置",
+    description: "查看各任务模型配置并测试连通性",
+    accent: "from-fuchsia-500 to-violet-600",
+    href: "/teacher/model-settings",
   },
 ];
 
@@ -175,6 +204,14 @@ export default function TeacherDashboardPage() {
             <span className="hidden rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-600/20 sm:inline">
               在线
             </span>
+            <form action={signOutAction}>
+              <button
+                type="submit"
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
+              >
+                退出
+              </button>
+            </form>
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-600 text-sm font-semibold text-white">
               王
             </div>
@@ -275,7 +312,7 @@ export default function TeacherDashboardPage() {
                 href="/teacher/analytics"
                 className="text-sm font-medium text-indigo-600 hover:text-indigo-700"
               >
-                学情分析
+                学习数据
               </Link>
             </div>
             <div className="grid gap-4 sm:grid-cols-3">

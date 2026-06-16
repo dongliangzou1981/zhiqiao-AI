@@ -1,10 +1,13 @@
-"use client";
-
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
-import { getLessonHistoryById, type LessonHistoryRecord } from "@/lib/lesson-history";
+import { getLessonPlanById } from "@/lib/lesson-plans";
+import { createClient } from "@/lib/supabase/server";
 import { LessonPlanMarkdown } from "../../lesson-generator/lesson-plan-markdown";
+
+type LessonHistoryDetailPageProps = {
+  params: Promise<{
+    id: string;
+  }>;
+};
 
 function formatCreatedAt(iso: string): string {
   return new Date(iso).toLocaleString("zh-CN", {
@@ -16,18 +19,12 @@ function formatCreatedAt(iso: string): string {
   });
 }
 
-export default function LessonHistoryDetailPage() {
-  const params = useParams();
-  const id = typeof params.id === "string" ? params.id : "";
-  const [record, setRecord] = useState<LessonHistoryRecord | null>(null);
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    if (id) {
-      setRecord(getLessonHistoryById(id) ?? null);
-    }
-    setReady(true);
-  }, [id]);
+export default async function LessonHistoryDetailPage({
+  params,
+}: LessonHistoryDetailPageProps) {
+  const { id } = await params;
+  const supabase = await createClient();
+  const record = await getLessonPlanById(supabase, id);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/40">
@@ -45,13 +42,7 @@ export default function LessonHistoryDetailPage() {
       </header>
 
       <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
-        {!ready && (
-          <div className="flex min-h-[200px] items-center justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-violet-200 border-t-violet-600" />
-          </div>
-        )}
-
-        {ready && !record && (
+        {!record && (
           <div className="rounded-2xl border border-slate-200/80 bg-white p-8 text-center shadow-sm">
             <p className="text-slate-600">未找到该教案记录</p>
             <Link
@@ -63,15 +54,17 @@ export default function LessonHistoryDetailPage() {
           </div>
         )}
 
-        {ready && record && (
+        {record && (
           <article className="space-y-4">
             <div className="rounded-2xl border border-violet-200/60 bg-gradient-to-br from-violet-50 to-white p-6 shadow-sm">
-              <h2 className="text-lg font-bold text-slate-900">{record.knowledgePointName}</h2>
+              <h2 className="text-lg font-bold text-slate-900">
+                {record.knowledge_point_name}
+              </h2>
               <code className="mt-2 inline-block rounded-md bg-white/80 px-2 py-0.5 font-mono text-xs text-violet-800 ring-1 ring-violet-200/60">
-                {record.knowledgePointCode}
+                {record.knowledge_point_code}
               </code>
               <p className="mt-2 text-sm text-slate-500">
-                创建时间：{formatCreatedAt(record.createdAt)}
+                创建时间：{formatCreatedAt(record.created_at)}
               </p>
             </div>
 

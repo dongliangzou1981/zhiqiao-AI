@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { signOutAction } from "@/app/auth/actions";
+import { getProfile } from "@/lib/auth/profile";
+import { createClient } from "@/lib/supabase/server";
 
 const todayTasks = [
   {
@@ -53,6 +56,13 @@ const aiTools = [
     description: "按掌握度推送复习与巩固练习",
     accent: "from-violet-500 to-purple-600",
     href: "/student/review",
+  },
+  {
+    id: "mastery",
+    title: "弱项知识点",
+    description: "查看待巩固知识点和下一步复习建议",
+    accent: "from-rose-500 to-orange-500",
+    href: "/student/mastery",
   },
 ];
 
@@ -135,7 +145,24 @@ function IconClock() {
   );
 }
 
-export default function StudentDashboardPage() {
+async function getCurrentStudentId() {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return null;
+
+    const profile = await getProfile(supabase, user.id);
+    return profile?.role === "student" ? profile.id : null;
+  } catch {
+    return null;
+  }
+}
+
+export default async function StudentDashboardPage() {
+  const studentId = await getCurrentStudentId();
   const today = new Date().toLocaleDateString("zh-CN", {
     weekday: "long",
     year: "numeric",
@@ -165,6 +192,14 @@ export default function StudentDashboardPage() {
             <span className="hidden rounded-full bg-teal-50 px-3 py-1 text-xs font-medium text-teal-700 ring-1 ring-teal-600/20 sm:inline">
               七年级 · 数学
             </span>
+            <form action={signOutAction}>
+              <button
+                type="submit"
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
+              >
+                退出
+              </button>
+            </form>
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-teal-600 text-sm font-semibold text-white">
               李
             </div>
@@ -174,6 +209,22 @@ export default function StudentDashboardPage() {
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="grid gap-6 lg:grid-cols-3">
+          {studentId ? (
+            <section className="rounded-2xl border border-teal-200 bg-white p-5 shadow-sm shadow-teal-100/60 lg:col-span-3">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">我的学生ID</p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    老师添加你到学习数据范围时，需要使用这个 ID。
+                  </p>
+                </div>
+                <code className="break-all rounded-lg bg-teal-50 px-3 py-2 font-mono text-xs text-teal-800 ring-1 ring-teal-100">
+                  {studentId}
+                </code>
+              </div>
+            </section>
+          ) : null}
+
           {/* 今日任务 */}
           <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm shadow-slate-200/50 lg:col-span-1">
             <div className="mb-5 flex items-center gap-2">
@@ -214,7 +265,7 @@ export default function StudentDashboardPage() {
               </span>
               <h2 className="text-lg font-semibold text-slate-900">AI学习助手</h2>
             </div>
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {aiTools.map((tool) => (
                 <Link
                   key={tool.id}

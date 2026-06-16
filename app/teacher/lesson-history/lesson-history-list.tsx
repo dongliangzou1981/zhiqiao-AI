@@ -1,8 +1,6 @@
-"use client";
-
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { getLessonHistory, type LessonHistoryRecord } from "@/lib/lesson-history";
+import { listLessonPlans, type LessonPlanRecord } from "@/lib/lesson-plans";
+import { createClient } from "@/lib/supabase/server";
 
 function formatCreatedAt(iso: string): string {
   return new Date(iso).toLocaleString("zh-CN", {
@@ -14,28 +12,19 @@ function formatCreatedAt(iso: string): string {
   });
 }
 
-export function LessonHistoryList() {
-  const [records, setRecords] = useState<LessonHistoryRecord[]>([]);
-  const [ready, setReady] = useState(false);
+async function getRecords(): Promise<LessonPlanRecord[]> {
+  const supabase = await createClient();
+  return listLessonPlans(supabase);
+}
 
-  useEffect(() => {
-    setRecords(getLessonHistory());
-    setReady(true);
-  }, []);
-
-  if (!ready) {
-    return (
-      <div className="flex min-h-[200px] items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-violet-200 border-t-violet-600" />
-      </div>
-    );
-  }
+export async function LessonHistoryList() {
+  const records = await getRecords();
 
   if (records.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 py-12 text-center">
         <p className="text-sm font-medium text-slate-600">暂无教案历史</p>
-        <p className="mt-1 text-xs text-slate-400">生成教案后将自动保存在本地</p>
+        <p className="mt-1 text-xs text-slate-400">生成教案后将自动保存到数据库</p>
         <Link
           href="/teacher/lesson-generator"
           className="mt-4 inline-block text-sm font-medium text-indigo-600 hover:text-indigo-700"
@@ -62,15 +51,15 @@ export function LessonHistoryList() {
             {records.map((record) => (
               <tr key={record.id} className="transition hover:bg-slate-50/80">
                 <td className="py-4 pr-4 font-medium text-slate-900">
-                  {record.knowledgePointName}
+                  {record.knowledge_point_name}
                 </td>
                 <td className="py-4 pr-4">
                   <code className="rounded-md bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-700">
-                    {record.knowledgePointCode}
+                    {record.knowledge_point_code}
                   </code>
                 </td>
                 <td className="py-4 pr-4 tabular-nums text-slate-600">
-                  {formatCreatedAt(record.createdAt)}
+                  {formatCreatedAt(record.created_at)}
                 </td>
                 <td className="py-4 text-right">
                   <Link
@@ -92,12 +81,12 @@ export function LessonHistoryList() {
             key={record.id}
             className="rounded-xl border border-slate-100 bg-slate-50/50 p-4 transition hover:border-indigo-200 hover:bg-indigo-50/30"
           >
-            <p className="font-semibold text-slate-900">{record.knowledgePointName}</p>
+            <p className="font-semibold text-slate-900">{record.knowledge_point_name}</p>
             <code className="mt-2 inline-block rounded-md bg-white px-2 py-0.5 font-mono text-xs text-slate-600 ring-1 ring-slate-200/80">
-              {record.knowledgePointCode}
+              {record.knowledge_point_code}
             </code>
             <p className="mt-2 text-xs text-slate-500">
-              创建时间：{formatCreatedAt(record.createdAt)}
+              创建时间：{formatCreatedAt(record.created_at)}
             </p>
             <Link
               href={`/teacher/lesson-history/${record.id}`}
@@ -112,12 +101,7 @@ export function LessonHistoryList() {
   );
 }
 
-export function LessonHistoryCount() {
-  const [count, setCount] = useState(0);
-
-  useEffect(() => {
-    setCount(getLessonHistory().length);
-  }, []);
-
-  return <span className="font-semibold text-indigo-600">{count}</span>;
+export async function LessonHistoryCount() {
+  const records = await getRecords();
+  return <span className="font-semibold text-indigo-600">{records.length}</span>;
 }

@@ -51,8 +51,8 @@ export default function LessonHistoryPage() {
               </div>
             </div>
           </div>
-          <span className="shrink-0 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200/80">
-            本地存储
+          <span className="shrink-0 rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700 ring-1 ring-indigo-200/80">
+            已保存教案
           </span>
         </div>
       </header>
@@ -75,7 +75,7 @@ export default function LessonHistoryPage() {
         </section>
 
         <p className="mt-8 text-center text-xs text-slate-400">
-          数据保存在浏览器本地 · 知桥AI V1.0
+          数据保存在 Supabase · 知桥AI V1.0
         </p>
       </main>
     </div>

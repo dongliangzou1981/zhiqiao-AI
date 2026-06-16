@@ -6,6 +6,18 @@ export default function Home() {
       <h1 className="text-2xl font-semibold text-slate-900">知桥AI</h1>
       <div className="flex flex-wrap justify-center gap-3">
         <Link
+          href="/auth/login"
+          className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          登录
+        </Link>
+        <Link
+          href="/auth/register"
+          className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          注册
+        </Link>
+        <Link
           href="/teacher"
           className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
         >
