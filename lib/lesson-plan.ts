@@ -6,6 +6,7 @@ export type GenerateLessonPlanParams = {
   code: string;
   name: string;
   description: string;
+  knowledgeContext?: string;
 };
 
 const SYSTEM_PROMPT =
@@ -37,7 +38,9 @@ export async function generateLessonPlan(params: GenerateLessonPlanParams): Prom
   const normalized = {
     code: params.code.trim(),
     name: params.name.trim(),
-    description: params.description.trim(),
+    description: params.knowledgeContext?.trim()
+      ? `${params.description.trim()}\n\n${params.knowledgeContext.trim()}`
+      : params.description.trim(),
   };
 
   for (const [key, value] of Object.entries(normalized)) {

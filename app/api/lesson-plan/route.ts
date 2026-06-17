@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getProfile } from "@/lib/auth/profile";
+import { formatK12KnowledgeContext } from "@/lib/k12-knowledge/context";
+import { getK12KnowledgeContextByCode } from "@/lib/k12-knowledge/queries";
 import { generateLessonPlan } from "@/lib/lesson-plan";
 import { createClient } from "@/lib/supabase/server";
 
@@ -43,7 +45,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "缺少知识点说明（description）" }, { status: 400 });
     }
 
-    const lessonPlan = await generateLessonPlan({ code, name, description });
+    const knowledgeContext = await getK12KnowledgeContextByCode(code, supabase);
+    const lessonPlan = await generateLessonPlan({
+      code,
+      name,
+      description,
+      knowledgeContext: formatK12KnowledgeContext(knowledgeContext),
+    });
     const { data: savedRecord, error: saveError } = await supabase
       .from("lesson_plans")
       .insert({

@@ -4,6 +4,7 @@ import { getAIClient, getAIModel } from "@/lib/ai";
 
 export type GenerateStudentAnswerParams = {
   question: string;
+  knowledgeContext?: string;
 };
 
 const SYSTEM_PROMPT =
@@ -42,7 +43,10 @@ export async function generateStudentAnswer(
   const client = await getAIClient();
   const model = getAIModel("student-qa");
   const promptTemplate = await getPromptTemplate();
-  const userPrompt = replaceAll(promptTemplate, { question });
+  const contextualQuestion = params.knowledgeContext?.trim()
+    ? `${question}\n\n可参考的知识库上下文：\n${params.knowledgeContext.trim()}`
+    : question;
+  const userPrompt = replaceAll(promptTemplate, { question: contextualQuestion });
 
   const response = await client.chat.completions.create({
     model,

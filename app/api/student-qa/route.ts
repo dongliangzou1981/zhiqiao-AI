@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { generateStudentAnswer } from "@/lib/student-qa";
 import { getProfile } from "@/lib/auth/profile";
+import { formatK12KnowledgeContext } from "@/lib/k12-knowledge/context";
+import { getK12KnowledgeContextByQuestion } from "@/lib/k12-knowledge/queries";
 import { createClient } from "@/lib/supabase/server";
 
 export const maxDuration = 60;
@@ -33,7 +35,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "缺少问题（question）" }, { status: 400 });
     }
 
-    const answer = await generateStudentAnswer({ question });
+    const knowledgeContext = await getK12KnowledgeContextByQuestion(question, supabase);
+    const answer = await generateStudentAnswer({
+      question,
+      knowledgeContext: formatK12KnowledgeContext(knowledgeContext),
+    });
     const { data: savedRecord, error: saveError } = await supabase
       .from("qa_records")
       .insert({
