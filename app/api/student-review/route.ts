@@ -22,7 +22,7 @@ type ReviewTaskPayload = {
   source_practice_record_id: string | null;
   knowledge_point_code: string;
   knowledge_point_name: string;
-  task_type: "mistake_review" | "weekly_review";
+  task_type: "mistake_review" | "weekly_review" | "teacher_review";
   status: "pending" | "completed";
   due_date: string;
   created_at: string;

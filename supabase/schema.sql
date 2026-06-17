@@ -246,7 +246,7 @@ create table if not exists public.student_review_tasks (
 
   constraint student_review_tasks_kp_code_not_empty check (char_length(trim(knowledge_point_code)) > 0),
   constraint student_review_tasks_kp_name_not_empty check (char_length(trim(knowledge_point_name)) > 0),
-  constraint student_review_tasks_task_type_valid check (task_type in ('mistake_review', 'weekly_review')),
+  constraint student_review_tasks_task_type_valid check (task_type in ('mistake_review', 'weekly_review', 'teacher_review')),
   constraint student_review_tasks_status_valid check (status in ('pending', 'completed'))
 );
 
@@ -496,6 +496,7 @@ drop policy if exists "student_practice_records_student_insert_own" on public.st
 drop policy if exists "student_review_tasks_student_select_own" on public.student_review_tasks;
 drop policy if exists "student_review_tasks_teacher_select_linked" on public.student_review_tasks;
 drop policy if exists "student_review_tasks_student_insert_own" on public.student_review_tasks;
+drop policy if exists "student_review_tasks_teacher_insert_linked" on public.student_review_tasks;
 drop policy if exists "student_review_tasks_student_update_own" on public.student_review_tasks;
 drop policy if exists "student_courseware_progress_student_select_own" on public.student_courseware_progress;
 drop policy if exists "student_courseware_progress_student_insert_own" on public.student_courseware_progress;
@@ -735,9 +736,25 @@ create policy "student_review_tasks_student_insert_own"
   to authenticated
   with check (
     auth.uid() = user_id
+    and task_type in ('mistake_review', 'weekly_review')
     and exists (
       select 1 from public.profiles p
       where p.id = auth.uid() and p.role = 'student'
+    )
+  );
+
+create policy "student_review_tasks_teacher_insert_linked"
+  on public.student_review_tasks for insert
+  to authenticated
+  with check (
+    task_type = 'teacher_review'
+    and source_practice_record_id is null
+    and status = 'pending'
+    and private.is_teacher(auth.uid())
+    and exists (
+      select 1 from public.teacher_student_links l
+      where l.teacher_id = auth.uid()
+        and l.student_id = student_review_tasks.user_id
     )
   );
 

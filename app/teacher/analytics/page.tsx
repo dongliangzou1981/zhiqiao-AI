@@ -6,6 +6,7 @@ import {
   buildCoursewareFeedbackFollowUpStatus,
 } from "@/lib/student-courseware-feedback";
 import { createClient } from "@/lib/supabase/server";
+import { TeacherReviewAssignmentForm } from "./teacher-review-assignment-form";
 
 export const metadata: Metadata = {
   title: "学习数据 · 知桥AI",
@@ -40,7 +41,7 @@ type ReviewTask = {
   source_practice_record_id: string | null;
   knowledge_point_code: string;
   knowledge_point_name: string;
-  task_type: "mistake_review" | "weekly_review";
+  task_type: "mistake_review" | "weekly_review" | "teacher_review";
   status: "pending" | "completed";
   due_date: string;
   created_at: string;
@@ -191,6 +192,17 @@ function getMasteryBadgeClass(level: KnowledgeMastery["mastery_level"]) {
   return "bg-rose-100 text-rose-700";
 }
 
+function getReviewTaskTypeLabel(type: ReviewTask["task_type"]) {
+  if (type === "mistake_review") return "错题复习";
+  if (type === "teacher_review") return "老师布置";
+  return "一周回顾";
+}
+
+function getReviewTaskBadgeClass(type: ReviewTask["task_type"]) {
+  if (type === "mistake_review") return "bg-rose-100 text-rose-700";
+  if (type === "teacher_review") return "bg-indigo-100 text-indigo-700";
+  return "bg-sky-100 text-sky-700";
+}
 
 function getFeedbackFollowUpBadgeClass(
   tone: ReturnType<typeof buildCoursewareFeedbackFollowUpStatus>["tone"]
@@ -838,6 +850,10 @@ export default async function AnalyticsPage() {
                                 >
                                   查资源
                                 </Link>
+                                <TeacherReviewAssignmentForm
+                                  knowledgePointCode={feedback.knowledge_point_code}
+                                  studentIds={[feedback.user_id]}
+                                />
                               </div>
                             </td>
                           </tr>
@@ -1050,12 +1066,18 @@ export default async function AnalyticsPage() {
                             </span>
                           </td>
                           <td className="py-4">
-                            <Link
-                              href={getCoursewareLibraryHref(mastery.knowledge_point_code)}
-                              className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-50"
-                            >
-                              查看资源
-                            </Link>
+                            <div className="flex flex-col gap-2">
+                              <Link
+                                href={getCoursewareLibraryHref(mastery.knowledge_point_code)}
+                                className="w-fit rounded-lg border border-indigo-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-50"
+                              >
+                                查看资源
+                              </Link>
+                              <TeacherReviewAssignmentForm
+                                knowledgePointCode={mastery.knowledge_point_code}
+                                studentIds={[mastery.user_id]}
+                              />
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1246,12 +1268,10 @@ export default async function AnalyticsPage() {
                         <div className="flex items-center justify-between gap-3">
                           <span
                             className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                              task.task_type === "mistake_review"
-                                ? "bg-rose-100 text-rose-700"
-                                : "bg-indigo-100 text-indigo-700"
+                              getReviewTaskBadgeClass(task.task_type)
                             }`}
                           >
-                            {task.task_type === "mistake_review" ? "错题复习" : "一周回顾"}
+                            {getReviewTaskTypeLabel(task.task_type)}
                           </span>
                           <span className="text-xs text-slate-500">
                             {formatDate(task.due_date)}

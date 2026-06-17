@@ -15,7 +15,15 @@ type TaskState = {
 };
 
 function taskTypeLabel(type: StudentReviewTask["task_type"]) {
-  return type === "mistake_review" ? "错题复习" : "一周回顾";
+  if (type === "mistake_review") return "错题复习";
+  if (type === "teacher_review") return "老师布置复习";
+  return "一周回顾";
+}
+
+function taskTypeBadgeClass(type: StudentReviewTask["task_type"]) {
+  if (type === "mistake_review") return "bg-rose-100 text-rose-700";
+  if (type === "teacher_review") return "bg-indigo-100 text-indigo-700";
+  return "bg-sky-100 text-sky-700";
 }
 
 function formatDate(date: string) {
@@ -194,11 +202,9 @@ export function StudentReviewClient({ tasks, focusCode }: StudentReviewClientPro
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <span
-                          className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                            task.task_type === "mistake_review"
-                              ? "bg-rose-100 text-rose-700"
-                              : "bg-sky-100 text-sky-700"
-                          }`}
+                          className={`rounded-full px-2.5 py-1 text-xs font-semibold ${taskTypeBadgeClass(
+                            task.task_type
+                          )}`}
                         >
                           {taskTypeLabel(task.task_type)}
                         </span>
@@ -230,6 +236,10 @@ export function StudentReviewClient({ tasks, focusCode }: StudentReviewClientPro
                             </p>
                           ) : null}
                         </div>
+                      ) : task.task_type === "teacher_review" ? (
+                        <p className="mt-3 rounded-lg border border-indigo-100 bg-white p-3 text-xs leading-5 text-slate-600">
+                          老师根据最近学习反馈布置了这个知识点的复习。
+                        </p>
                       ) : null}
                     </div>
                     <div className="flex flex-wrap gap-2 sm:justify-end">
