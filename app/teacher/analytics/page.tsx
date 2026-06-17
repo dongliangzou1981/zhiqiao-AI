@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getProfile } from "@/lib/auth/profile";
+import {
+  buildCoursewareFeedbackFollowUpFromSignals,
+  buildCoursewareFeedbackFollowUpStatus,
+} from "@/lib/student-courseware-feedback";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
@@ -70,6 +74,19 @@ type CoursewareFeedback = {
   updated_at: string;
 };
 
+type CoursewareRevisionSignal = {
+  courseware_id: string;
+  status: "pending" | "applied" | "discarded";
+  created_at: string;
+  applied_at: string | null;
+};
+
+type CoursewarePublishSignal = {
+  id: string;
+  is_published: boolean;
+  published_at: string | null;
+};
+
 type KnowledgeMastery = {
   id: string;
   user_id: string;
@@ -98,6 +115,8 @@ type LoadResult =
       reviewTasks: ReviewTask[];
       coursewareProgress: CoursewareProgress[];
       coursewareFeedback: CoursewareFeedback[];
+      coursewareRevisions: CoursewareRevisionSignal[];
+      feedbackCoursewares: CoursewarePublishSignal[];
       knowledgeMastery: KnowledgeMastery[];
     }
   | { status: "error"; message: string };
@@ -112,6 +131,9 @@ type KnowledgeSummary = {
   studentCount: number;
   pendingReviews: number;
   completedReviews: number;
+  feedbackCount: number;
+  needsHelpFeedbackCount: number;
+  lastFeedbackAt: string | null;
   lastPracticedAt: string | null;
 };
 
@@ -169,12 +191,27 @@ function getMasteryBadgeClass(level: KnowledgeMastery["mastery_level"]) {
   return "bg-rose-100 text-rose-700";
 }
 
+
+function getFeedbackFollowUpBadgeClass(
+  tone: ReturnType<typeof buildCoursewareFeedbackFollowUpStatus>["tone"]
+) {
+  if (tone === "published") return "bg-emerald-100 text-emerald-700";
+  if (tone === "applied") return "bg-teal-100 text-teal-700";
+  if (tone === "revision") return "bg-indigo-100 text-indigo-700";
+  if (tone === "review") return "bg-sky-100 text-sky-700";
+  return "bg-amber-100 text-amber-800";
+}
+
 function getCoursewareLibraryHref(code: string) {
   return `/teacher/courseware-library?q=${encodeURIComponent(code)}`;
 }
 
 function getCoursewareGenerateHref(code: string) {
   return `/teacher/courseware?knowledgePointCode=${encodeURIComponent(code)}&source=analytics`;
+}
+
+function getCoursewareFeedbackHref(feedback: CoursewareFeedback) {
+  return `/teacher/courseware-history/${feedback.courseware_id}?feedback=student#courseware-quality-instruction`;
 }
 
 function getTeacherCoursewarePracticeHref(record: PracticeRecord) {
@@ -185,9 +222,23 @@ function getTeacherCoursewarePracticeHref(record: PracticeRecord) {
   }#practice-${record.practice_item_index + 1}`;
 }
 
+function getFeedbackFollowUpStatus(
+  feedback: CoursewareFeedback,
+  tasks: ReviewTask[],
+  revisions: CoursewareRevisionSignal[],
+  coursewares: CoursewarePublishSignal[]
+) {
+  return buildCoursewareFeedbackFollowUpFromSignals(feedback, {
+    tasks,
+    revisions,
+    coursewares,
+  });
+}
+
 function buildKnowledgeSummaries(
   records: PracticeRecord[],
-  tasks: ReviewTask[]
+  tasks: ReviewTask[],
+  feedbackRows: CoursewareFeedback[]
 ): KnowledgeSummary[] {
   const map = new Map<
     string,
@@ -209,6 +260,9 @@ function buildKnowledgeSummaries(
         studentCount: 0,
         pendingReviews: 0,
         completedReviews: 0,
+        feedbackCount: 0,
+        needsHelpFeedbackCount: 0,
+        lastFeedbackAt: null,
         lastPracticedAt: null,
         studentIds: new Set<string>(),
       };
@@ -237,6 +291,9 @@ function buildKnowledgeSummaries(
         studentCount: 0,
         pendingReviews: 0,
         completedReviews: 0,
+        feedbackCount: 0,
+        needsHelpFeedbackCount: 0,
+        lastFeedbackAt: null,
         lastPracticedAt: null,
         studentIds: new Set<string>(),
       };
@@ -248,6 +305,38 @@ function buildKnowledgeSummaries(
     }
 
     map.set(task.knowledge_point_code, summary);
+  }
+
+  for (const feedback of feedbackRows) {
+    const summary =
+      map.get(feedback.knowledge_point_code) ??
+      {
+        code: feedback.knowledge_point_code,
+        name: feedback.knowledge_point_name,
+        attempts: 0,
+        correct: 0,
+        wrong: 0,
+        accuracy: 0,
+        studentCount: 0,
+        pendingReviews: 0,
+        completedReviews: 0,
+        feedbackCount: 0,
+        needsHelpFeedbackCount: 0,
+        lastFeedbackAt: null,
+        lastPracticedAt: null,
+        studentIds: new Set<string>(),
+      };
+
+    summary.feedbackCount += 1;
+    if (feedback.need_teacher_help || feedback.understanding_level === "not_understood") {
+      summary.needsHelpFeedbackCount += 1;
+    }
+    summary.studentIds.add(feedback.user_id);
+    if (!summary.lastFeedbackAt || feedback.updated_at > summary.lastFeedbackAt) {
+      summary.lastFeedbackAt = feedback.updated_at;
+    }
+
+    map.set(feedback.knowledge_point_code, summary);
   }
 
   return Array.from(map.values())
@@ -337,6 +426,8 @@ async function loadTeacherLearningData(): Promise<LoadResult> {
         reviewTasks: [],
         coursewareProgress: [],
         coursewareFeedback: [],
+        coursewareRevisions: [],
+        feedbackCoursewares: [],
         knowledgeMastery: [],
       };
     }
@@ -398,6 +489,36 @@ async function loadTeacherLearningData(): Promise<LoadResult> {
       return { status: "error", message: feedbackError.message };
     }
 
+    const feedbackCoursewareIds = [
+      ...new Set((coursewareFeedback ?? []).map((feedback) => feedback.courseware_id as string)),
+    ].filter(Boolean);
+    let feedbackCoursewares: CoursewarePublishSignal[] = [];
+    let coursewareRevisions: CoursewareRevisionSignal[] = [];
+
+    if (feedbackCoursewareIds.length > 0) {
+      const { data: feedbackCoursewareRows, error: feedbackCoursewareError } = await supabase
+        .from("coursewares")
+        .select("id, is_published, published_at")
+        .in("id", feedbackCoursewareIds);
+
+      if (feedbackCoursewareError) {
+        return { status: "error", message: feedbackCoursewareError.message };
+      }
+
+      const { data: revisionRows, error: revisionError } = await supabase
+        .from("courseware_revisions")
+        .select("courseware_id, status, created_at, applied_at")
+        .in("courseware_id", feedbackCoursewareIds)
+        .order("created_at", { ascending: false });
+
+      if (revisionError) {
+        return { status: "error", message: revisionError.message };
+      }
+
+      feedbackCoursewares = (feedbackCoursewareRows ?? []) as CoursewarePublishSignal[];
+      coursewareRevisions = (revisionRows ?? []) as CoursewareRevisionSignal[];
+    }
+
     const { data: knowledgeMastery, error: masteryError } = await supabase
       .from("student_knowledge_mastery")
       .select(
@@ -417,6 +538,8 @@ async function loadTeacherLearningData(): Promise<LoadResult> {
       reviewTasks: (reviewTasks ?? []) as ReviewTask[],
       coursewareProgress: (coursewareProgress ?? []) as CoursewareProgress[],
       coursewareFeedback: (coursewareFeedback ?? []) as CoursewareFeedback[],
+      coursewareRevisions,
+      feedbackCoursewares,
       knowledgeMastery: (knowledgeMastery ?? []) as KnowledgeMastery[],
     };
   } catch (error) {
@@ -474,6 +597,8 @@ export default async function AnalyticsPage() {
     reviewTasks,
     coursewareProgress,
     coursewareFeedback,
+    coursewareRevisions,
+    feedbackCoursewares,
     knowledgeMastery,
   } = result;
   const correctCount = practiceRecords.filter((record) => record.is_correct).length;
@@ -488,7 +613,11 @@ export default async function AnalyticsPage() {
     (mastery) => mastery.mastery_level === "needs_work"
   );
   const stableMastery = knowledgeMastery.filter((mastery) => mastery.mastery_level === "stable");
-  const knowledgeSummaries = buildKnowledgeSummaries(practiceRecords, reviewTasks);
+  const knowledgeSummaries = buildKnowledgeSummaries(
+    practiceRecords,
+    reviewTasks,
+    coursewareFeedback
+  );
   const studentSummaries = buildStudentSummaries(
     students,
     practiceRecords,
@@ -504,6 +633,15 @@ export default async function AnalyticsPage() {
         feedback.need_teacher_help || feedback.understanding_level === "not_understood"
     )
     .slice(0, 8);
+  const pendingNeedsHelpFeedbackCount = latestNeedsHelpFeedback.filter((feedback) => {
+    const status = getFeedbackFollowUpStatus(
+      feedback,
+      reviewTasks,
+      coursewareRevisions,
+      feedbackCoursewares
+    );
+    return status.tone === "pending";
+  }).length;
   const weakestMastery = knowledgeMastery.slice(0, 8);
   const practiceRecordById = new Map(practiceRecords.map((record) => [record.id, record]));
 
@@ -603,7 +741,7 @@ export default async function AnalyticsPage() {
                   </p>
                 </div>
                 <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-amber-800 ring-1 ring-amber-200">
-                  {latestNeedsHelpFeedback.length} 条待关注
+                  {pendingNeedsHelpFeedbackCount} 条待跟进 / {latestNeedsHelpFeedback.length} 条待关注
                 </span>
               </div>
 
@@ -620,46 +758,91 @@ export default async function AnalyticsPage() {
                         <th className="pb-3 pr-4 font-medium">知识点</th>
                         <th className="pb-3 pr-4 font-medium">理解反馈</th>
                         <th className="pb-3 pr-4 font-medium">学生说明</th>
-                        <th className="pb-3 font-medium">时间</th>
+                        <th className="pb-3 pr-4 font-medium">时间</th>
+                        <th className="pb-3 pr-4 font-medium">跟进状态</th>
+                        <th className="pb-3 font-medium">动作</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-amber-100">
-                      {latestNeedsHelpFeedback.map((feedback) => (
-                        <tr key={feedback.id} className="align-top">
-                          <td className="py-4 pr-4 font-medium text-slate-900">
-                            {getStudentName(students, feedback.user_id)}
-                          </td>
-                          <td className="py-4 pr-4">
-                            <p className="font-medium text-slate-800">
-                              {feedback.knowledge_point_name}
-                            </p>
-                            <code className="mt-1 inline-block rounded bg-white px-1.5 py-0.5 font-mono text-[11px] text-slate-600">
-                              {feedback.knowledge_point_code}
-                            </code>
-                          </td>
-                          <td className="py-4 pr-4">
-                            <span
-                              className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                                feedback.understanding_level === "not_understood"
-                                  ? "bg-rose-100 text-rose-700"
-                                  : "bg-amber-100 text-amber-800"
-                              }`}
-                            >
-                              {feedback.understanding_level === "not_understood"
-                                ? "没看懂"
-                                : "部分看懂"}
-                            </span>
-                          </td>
-                          <td className="max-w-sm py-4 pr-4 text-slate-700">
-                            <span className="line-clamp-2">
-                              {feedback.feedback_text || "学生未填写具体说明"}
-                            </span>
-                          </td>
-                          <td className="py-4 text-slate-500">
-                            {formatDateTime(feedback.updated_at)}
-                          </td>
-                        </tr>
-                      ))}
+                      {latestNeedsHelpFeedback.map((feedback) => {
+                        const followUpStatus = getFeedbackFollowUpStatus(
+                          feedback,
+                          reviewTasks,
+                          coursewareRevisions,
+                          feedbackCoursewares
+                        );
+
+                        return (
+                          <tr key={feedback.id} className="align-top">
+                            <td className="py-4 pr-4 font-medium text-slate-900">
+                              {getStudentName(students, feedback.user_id)}
+                            </td>
+                            <td className="py-4 pr-4">
+                              <p className="font-medium text-slate-800">
+                                {feedback.knowledge_point_name}
+                              </p>
+                              <code className="mt-1 inline-block rounded bg-white px-1.5 py-0.5 font-mono text-[11px] text-slate-600">
+                                {feedback.knowledge_point_code}
+                              </code>
+                            </td>
+                            <td className="py-4 pr-4">
+                              <span
+                                className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                  feedback.understanding_level === "not_understood"
+                                    ? "bg-rose-100 text-rose-700"
+                                    : "bg-amber-100 text-amber-800"
+                                }`}
+                              >
+                                {feedback.understanding_level === "not_understood"
+                                  ? "没看懂"
+                                  : "部分看懂"}
+                              </span>
+                            </td>
+                            <td className="max-w-sm py-4 pr-4 text-slate-700">
+                              <span className="line-clamp-2">
+                                {feedback.feedback_text || "学生未填写具体说明"}
+                              </span>
+                            </td>
+                            <td className="py-4 pr-4 text-slate-500">
+                              {formatDateTime(feedback.updated_at)}
+                            </td>
+                            <td className="max-w-[13rem] py-4 pr-4">
+                              <span
+                                className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getFeedbackFollowUpBadgeClass(
+                                  followUpStatus.tone
+                                )}`}
+                              >
+                                {followUpStatus.label}
+                              </span>
+                              <p className="mt-2 text-xs leading-5 text-slate-500">
+                                {followUpStatus.summary}
+                              </p>
+                            </td>
+                            <td className="py-4">
+                              <div className="flex flex-wrap gap-2">
+                                <Link
+                                  href={getCoursewareFeedbackHref(feedback)}
+                                  className="rounded-lg bg-amber-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-amber-700"
+                                >
+                                  去优化课件
+                                </Link>
+                                <Link
+                                  href={`/teacher/courseware-history/${feedback.courseware_id}`}
+                                  className="rounded-lg border border-amber-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-50"
+                                >
+                                  看来源课件
+                                </Link>
+                                <Link
+                                  href={getCoursewareLibraryHref(feedback.knowledge_point_code)}
+                                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                                >
+                                  查资源
+                                </Link>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -692,6 +875,7 @@ export default async function AnalyticsPage() {
                           <th className="pb-3 pr-4 font-medium">提交</th>
                           <th className="pb-3 pr-4 font-medium">正确率</th>
                           <th className="pb-3 pr-4 font-medium">待复习</th>
+                          <th className="pb-3 pr-4 font-medium">反馈</th>
                           <th className="pb-3 pr-4 font-medium">最近练习</th>
                           <th className="pb-3 font-medium">资源</th>
                         </tr>
@@ -726,6 +910,17 @@ export default async function AnalyticsPage() {
                             </td>
                             <td className="py-4 pr-4 tabular-nums text-slate-700">
                               {item.pendingReviews}
+                            </td>
+                            <td className="py-4 pr-4 text-slate-700">
+                              <span className="tabular-nums">{item.feedbackCount}</span>
+                              <span className="ml-1 text-xs text-slate-400">
+                                / 需跟进 {item.needsHelpFeedbackCount}
+                              </span>
+                              {item.lastFeedbackAt ? (
+                                <p className="mt-1 text-xs text-slate-400">
+                                  最近 {formatDateTime(item.lastFeedbackAt)}
+                                </p>
+                              ) : null}
                             </td>
                             <td className="py-4 pr-4 text-slate-500">
                               {formatDateTime(item.lastPracticedAt)}
@@ -813,7 +1008,7 @@ export default async function AnalyticsPage() {
                         <th className="pb-3 pr-4 font-medium">练习</th>
                         <th className="pb-3 pr-4 font-medium">复习</th>
                         <th className="pb-3 pr-4 font-medium">依据</th>
-                        <th className="pb-3 font-medium">资源</th>
+                        <th className="pb-3 font-medium">动作</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">

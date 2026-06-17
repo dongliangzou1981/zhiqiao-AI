@@ -13,6 +13,10 @@ import { getLatestPendingCoursewareRevisionRecord } from "@/lib/courseware-revis
 import { normalizeCoursewareStoryboardsForDisplay } from "@/lib/courseware-storyboard";
 import type { CoursewareJson } from "@/lib/courseware-types";
 import { getCoursewareById } from "@/lib/coursewares";
+import {
+  buildCoursewareFeedbackImprovementSummary,
+  type CoursewareFeedbackLevel,
+} from "@/lib/student-courseware-feedback";
 import { createClient } from "@/lib/supabase/server";
 import { setCoursewarePublishedAction } from "../actions";
 import { CoursewareJsonEditor } from "./courseware-json-editor";
@@ -29,7 +33,17 @@ type CoursewareHistoryDetailPageProps = {
     publish?: string;
     edit?: string;
     practice?: string;
+    feedback?: string;
   }>;
+};
+
+type CoursewareFeedbackRow = {
+  id: string;
+  user_id: string;
+  understanding_level: CoursewareFeedbackLevel;
+  need_teacher_help: boolean;
+  feedback_text: string | null;
+  updated_at: string;
 };
 
 function formatCreatedAt(iso: string): string {
@@ -60,6 +74,26 @@ function parsePracticeIndex(value: string | undefined, itemCount: number): numbe
   }
 
   return parsed;
+}
+
+async function listCoursewareFeedbackForTeacher(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  coursewareId: string
+): Promise<CoursewareFeedbackRow[]> {
+  const { data, error } = await supabase
+    .from("student_courseware_feedback")
+    .select("id, user_id, understanding_level, need_teacher_help, feedback_text, updated_at")
+    .eq("courseware_id", coursewareId)
+    .order("need_teacher_help", { ascending: false })
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    return [];
+  }
+
+  return ((data ?? []) as CoursewareFeedbackRow[]).filter(
+    (row) => row.understanding_level !== "understood" || row.need_teacher_help
+  );
 }
 
 const sourceLabels: Record<CoursewareAssetMetadata["source_type"], string> = {
@@ -156,9 +190,13 @@ function AssetMetadataPanel({ metadata }: { metadata: CoursewareAssetMetadata })
 function ContentQualityPanel({
   report,
   coursewareId,
+  feedbackInstruction,
+  feedbackRows,
 }: {
   report: CoursewareQualityReport;
   coursewareId: string;
+  feedbackInstruction: string;
+  feedbackRows: CoursewareFeedbackRow[];
 }) {
   const issues = getCoursewareQualityIssues(report);
   const requiredIssues = issues.filter((issue) => issue.severity === "required");
@@ -248,7 +286,30 @@ function ContentQualityPanel({
         coursewareId={coursewareId}
         issueCount={issues.length}
         passedRequired={report.passedRequired}
+        initialInstruction={feedbackInstruction}
       />
+
+      {feedbackRows.length > 0 ? (
+        <div className="mt-4 rounded-xl border border-amber-200 bg-white/85 p-4 text-sm ring-1 ring-black/5">
+          <p className="font-semibold text-slate-900">来自学生反馈的优化线索</p>
+          <p className="mt-1 text-slate-600">{feedbackInstruction}</p>
+          <ul className="mt-3 space-y-2 text-xs leading-5 text-slate-500">
+            {feedbackRows.slice(0, 5).map((feedback) => (
+              <li key={feedback.id} className="rounded-lg bg-amber-50 px-3 py-2">
+                <span className="font-semibold text-amber-900">
+                  {feedback.understanding_level === "not_understood"
+                    ? "没看懂"
+                    : "部分看懂"}
+                  {feedback.need_teacher_help ? " · 希望老师再讲" : ""}
+                </span>
+                <span className="ml-2">
+                  {feedback.feedback_text || "学生未填写具体说明"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -269,6 +330,11 @@ export default async function CoursewareHistoryDetailPage({
     : null;
   const pendingRevision =
     record && structured ? await getLatestPendingCoursewareRevisionRecord(supabase, record.id) : null;
+  const feedbackRows =
+    record && query.feedback === "student"
+      ? await listCoursewareFeedbackForTeacher(supabase, record.id)
+      : [];
+  const feedbackInstruction = buildCoursewareFeedbackImprovementSummary(feedbackRows);
   const candidateStructured =
     pendingRevision && isCoursewareJson(pendingRevision.candidate_content_json)
       ? pendingRevision.candidate_content_json
@@ -448,7 +514,12 @@ export default async function CoursewareHistoryDetailPage({
             {assetMetadata ? <AssetMetadataPanel metadata={assetMetadata} /> : null}
 
             {qualityReport ? (
-              <ContentQualityPanel report={qualityReport} coursewareId={record.id} />
+              <ContentQualityPanel
+                report={qualityReport}
+                coursewareId={record.id}
+                feedbackInstruction={feedbackInstruction}
+                feedbackRows={feedbackRows}
+              />
             ) : null}
 
             {qualityReport ? <CoursewareHumanReviewChecklist report={qualityReport} /> : null}

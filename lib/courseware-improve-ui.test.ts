@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getCoursewareImproveButtonLabel } from "./courseware-improve-ui";
+import {
+  getCoursewareImproveButtonLabel,
+  getCoursewareImproveProgressMessage,
+} from "./courseware-improve-ui";
 
 test("getCoursewareImproveButtonLabel shows loading state first", () => {
   assert.equal(
@@ -21,4 +24,11 @@ test("getCoursewareImproveButtonLabel still allows another candidate after requi
     getCoursewareImproveButtonLabel({ loading: false, issueCount: 0, passedRequired: true }),
     "再生成一个优化候选版"
   );
+});
+
+test("getCoursewareImproveProgressMessage explains long-running generation stages", () => {
+  assert.match(getCoursewareImproveProgressMessage(0), /整理质量问题/);
+  assert.match(getCoursewareImproveProgressMessage(10), /生成优化候选版/);
+  assert.match(getCoursewareImproveProgressMessage(45), /不要重复点击/);
+  assert.match(getCoursewareImproveProgressMessage(120), /不会覆盖正式课件/);
 });

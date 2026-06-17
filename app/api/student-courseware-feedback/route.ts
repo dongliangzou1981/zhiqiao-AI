@@ -73,30 +73,43 @@ export async function POST(request: Request) {
     const now = new Date().toISOString();
     const feedbackSelect =
       "id, courseware_id, knowledge_point_code, knowledge_point_name, understanding_level, need_teacher_help, feedback_text, updated_at";
-    const { data: feedback, error: saveError } = await supabase
+    const feedbackPayload = {
+      user_id: user.id,
+      courseware_id: courseware.id,
+      knowledge_point_code: courseware.knowledge_point_code,
+      knowledge_point_name: courseware.knowledge_point_name,
+      understanding_level: understandingLevel,
+      need_teacher_help: needTeacherHelp,
+      feedback_text: feedbackText || null,
+      updated_at: now,
+    };
+    let saveResult = await supabase
       .from("student_courseware_feedback")
-      .upsert(
-        {
-          user_id: user.id,
-          courseware_id: courseware.id,
-          knowledge_point_code: courseware.knowledge_point_code,
-          knowledge_point_name: courseware.knowledge_point_name,
+      .insert(feedbackPayload)
+      .select(feedbackSelect)
+      .single();
+
+    if (saveResult.error?.code === "23505") {
+      saveResult = await supabase
+        .from("student_courseware_feedback")
+        .update({
           understanding_level: understandingLevel,
           need_teacher_help: needTeacherHelp,
           feedback_text: feedbackText || null,
           updated_at: now,
-        },
-        { onConflict: "user_id,courseware_id" }
-      )
-      .select(feedbackSelect)
-      .single();
+        })
+        .eq("user_id", user.id)
+        .eq("courseware_id", courseware.id)
+        .select(feedbackSelect)
+        .single();
+    }
 
-    if (saveError) {
-      throw saveError;
+    if (saveResult.error) {
+      throw saveResult.error;
     }
 
     return NextResponse.json({
-      feedback,
+      feedback: saveResult.data,
       status: buildCoursewareFeedbackStatus(understandingLevel, needTeacherHelp),
     });
   } catch (error) {

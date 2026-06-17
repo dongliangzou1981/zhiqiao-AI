@@ -23,3 +23,19 @@ export function getCoursewareImproveButtonLabel({
 
   return "生成优化候选版";
 }
+
+export function getCoursewareImproveProgressMessage(elapsedSeconds: number) {
+  if (elapsedSeconds >= 120) {
+    return "仍在生成结构化课件内容。此步骤依赖模型响应，完成前不会覆盖正式课件。";
+  }
+
+  if (elapsedSeconds >= 45) {
+    return "正在等待结构化课件生成结果。候选版生成较慢时，请先不要重复点击。";
+  }
+
+  if (elapsedSeconds >= 10) {
+    return "正在根据质量问题和学生反馈生成优化候选版。";
+  }
+
+  return "正在整理质量问题、学生反馈和当前课件参考。";
+}

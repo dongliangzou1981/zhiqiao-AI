@@ -1,25 +1,45 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getCoursewareImproveButtonLabel } from "@/lib/courseware-improve-ui";
+import {
+  getCoursewareImproveButtonLabel,
+  getCoursewareImproveProgressMessage,
+} from "@/lib/courseware-improve-ui";
 import { coursewareImprovePresets } from "@/lib/courseware-improve-presets";
 
 type CoursewareQualityImproverProps = {
   coursewareId: string;
   issueCount: number;
   passedRequired: boolean;
+  initialInstruction?: string;
 };
 
 export function CoursewareQualityImprover({
   coursewareId,
   issueCount,
   passedRequired,
+  initialInstruction = "",
 }: CoursewareQualityImproverProps) {
   const router = useRouter();
-  const [instruction, setInstruction] = useState("");
+  const [instruction, setInstruction] = useState(initialInstruction);
   const [loading, setLoading] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!loading) {
+      setElapsedSeconds(0);
+      return;
+    }
+
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [loading]);
 
   async function improve() {
     setLoading(true);
@@ -105,6 +125,12 @@ export function CoursewareQualityImprover({
       <p className="mt-3 text-xs leading-5 text-slate-500">
         生成结果会作为“优化候选版”保存。老师确认采用前，不会覆盖当前课件，也不会影响学生端。
       </p>
+
+      {loading ? (
+        <p className="mt-3 rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs leading-5 text-indigo-800">
+          {getCoursewareImproveProgressMessage(elapsedSeconds)}
+        </p>
+      ) : null}
 
       {error ? (
         <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">

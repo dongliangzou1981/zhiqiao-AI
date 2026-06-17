@@ -153,6 +153,171 @@ function compactStructuredCourseware(courseware: CoursewareJson) {
   };
 }
 
+function escapeHtml(value: string | undefined) {
+  return (value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function toListItems(values: string[] | undefined) {
+  const items = (values ?? []).filter(Boolean).slice(0, 5);
+
+  if (items.length === 0) {
+    return "<li>请教师结合课堂情况补充讲解重点。</li>";
+  }
+
+  return items.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+}
+
+function renderSlide(title: string, body: string, layout: string, extra = "") {
+  return `<section class="slide" data-layout="${layout}">
+  <div class="slide-inner">
+    <p class="eyebrow">课堂投屏 · 优化候选版</p>
+    <h1>${escapeHtml(title)}</h1>
+    <p class="body">${escapeHtml(body)}</p>
+    ${extra}
+  </div>
+</section>`;
+}
+
+export function buildCoursewareTemplateInteractiveHtml(
+  courseware: CoursewareJson
+): CoursewareInteractiveHtml {
+  const slides = courseware.slides.slice(0, 8);
+  const firstExample = courseware.examples[0];
+  const mistakes = courseware.common_mistakes.slice(0, 3);
+  const practiceItems = courseware.practice_items.slice(0, 3);
+  const storyboard = courseware.dynamic_storyboards?.[0];
+  const storyboardSteps = storyboard?.steps.slice(0, 4) ?? [];
+  const renderedSlides = [
+    renderSlide(
+      courseware.knowledge_point_name,
+      courseware.core_concept?.explanation || "围绕本知识点完成概念理解、例题推导和练习巩固。",
+      "cover-visual",
+      `<ul>${toListItems(courseware.learning_goals)}</ul>`
+    ),
+    ...slides.slice(0, 3).map((slide, index) =>
+      renderSlide(
+        slide.title,
+        slide.content,
+        ["concept-board", "derivation-focus", "teacher-check"][index % 3],
+        slide.teacher_notes
+          ? `<p class="note">教师提示：${escapeHtml(slide.teacher_notes)}</p>`
+          : ""
+      )
+    ),
+    renderSlide(
+      firstExample?.title || "例题讲解",
+      firstExample?.question || "请选择一道能暴露关键步骤的例题进行讲解。",
+      "example-steps",
+      `<ol>${toListItems(firstExample?.solution_steps)}</ol>`
+    ),
+    renderSlide(
+      "易错点提醒",
+      mistakes[0]?.mistake || "关注学生容易跳步或符号处理错误的环节。",
+      "mistake-contrast",
+      `<ul>${mistakes
+        .map(
+          (item) =>
+            `<li><strong>${escapeHtml(item.mistake)}</strong>：${escapeHtml(
+              item.correction
+            )}</li>`
+        )
+        .join("")}</ul>`
+    ),
+    renderSlide(
+      storyboard?.title || "动态讲解步骤",
+      storyboard?.learning_objective || "把关键推导拆成学生能跟上的连续步骤。",
+      "storyboard",
+      `<ol>${toListItems(
+        storyboardSteps.map((step) => `${step.step_title}：${step.narration}`)
+      )}</ol>`
+    ),
+    renderSlide(
+      "课堂练习",
+      "用分层练习确认学生是否已经理解关键步骤。",
+      "practice",
+      `<ul>${practiceItems
+        .map(
+          (item) =>
+            `<li><strong>${escapeHtml(item.question)}</strong><br/><span>${escapeHtml(
+              item.explanation
+            )}</span></li>`
+        )
+        .join("")}</ul>`
+    ),
+    renderSlide(
+      "复习安排",
+      "课后用短任务回看关键步骤，避免只会模仿、不懂理由。",
+      "review-plan",
+      `<ul>${toListItems(courseware.review_plan.map((item) => `${item.timing}：${item.task}`))}</ul>`
+    ),
+  ];
+  const html = `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtml(courseware.knowledge_point_name)} 互动课件</title>
+  <style>
+    *{box-sizing:border-box}
+    html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:"Microsoft YaHei",Arial,sans-serif;background:#0f172a;color:#f8fafc}
+    body{overflow:hidden}
+    .deck{width:100vw;height:100vh;overflow:hidden;position:relative;background:linear-gradient(135deg,#0f172a,#172554 58%,#111827)}
+    .slide{width:100%;height:100%;overflow:hidden;position:absolute;inset:0;display:none;padding:5vh 6vw}
+    .slide.active{display:flex}
+    .slide-inner{width:100%;height:100%;display:flex;flex-direction:column;justify-content:center;gap:2.4vh;border:1px solid rgba(255,255,255,.14);border-radius:24px;padding:5vh 5vw;background:rgba(15,23,42,.76);box-shadow:0 24px 80px rgba(0,0,0,.32)}
+    .eyebrow{margin:0;color:#67e8f9;font-size:1.8vh;font-weight:700;letter-spacing:.08em}
+    h1{margin:0;font-size:clamp(30px,5vw,74px);line-height:1.05}
+    .body{margin:0;max-width:70ch;font-size:clamp(18px,2.2vw,30px);line-height:1.55;color:#dbeafe}
+    .note{margin:0;border-left:5px solid #facc15;padding:1.4vh 1.5vw;background:rgba(250,204,21,.12);font-size:clamp(15px,1.7vw,23px);line-height:1.5;color:#fef9c3}
+    ul,ol{margin:0;padding-left:1.5em;display:grid;gap:1.1vh;font-size:clamp(16px,1.8vw,25px);line-height:1.45;color:#e0f2fe}
+    li strong{color:#fff}
+    li span{color:#cbd5e1}
+    .controls{position:absolute;left:50%;bottom:3vh;transform:translateX(-50%);display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:999px;background:rgba(15,23,42,.78);border:1px solid rgba(255,255,255,.14)}
+    button{border:0;border-radius:999px;padding:10px 18px;background:#22d3ee;color:#082f49;font-weight:800;cursor:pointer}
+    .count{min-width:72px;text-align:center;color:#e2e8f0;font-weight:700}
+  </style>
+</head>
+<body>
+  <main class="deck">
+    ${renderedSlides.join("\n")}
+    <div class="controls">
+      <button type="button" id="prev">上一页</button>
+      <span class="count" id="count">1 / ${renderedSlides.length}</span>
+      <button type="button" id="next">下一页</button>
+    </div>
+  </main>
+  <script>
+    const slides = Array.from(document.querySelectorAll('.slide'));
+    const count = document.getElementById('count');
+    let index = 0;
+    function show(nextIndex) {
+      index = Math.max(0, Math.min(slides.length - 1, nextIndex));
+      slides.forEach((slide, slideIndex) => slide.classList.toggle('active', slideIndex === index));
+      count.textContent = (index + 1) + ' / ' + slides.length;
+    }
+    document.getElementById('prev').addEventListener('click', () => show(index - 1));
+    document.getElementById('next').addEventListener('click', () => show(index + 1));
+    window.addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowLeft') show(index - 1);
+      if (event.key === 'ArrowRight' || event.key === ' ') show(index + 1);
+    });
+    show(0);
+  </script>
+</body>
+</html>`;
+
+  return {
+    title: `${courseware.knowledge_point_name} 互动课件`,
+    instructions: "本候选版由结构化课件内容生成投屏页，老师采用前仍需预览确认。",
+    html,
+  };
+}
+
 export async function generateCoursewareInteractiveHtml(
   params: GenerateCoursewareHtmlParams
 ): Promise<CoursewareInteractiveHtml> {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getProfile } from "@/lib/auth/profile";
 import { getAIModelConfig } from "@/lib/ai";
-import { generateCoursewareInteractiveHtml } from "@/lib/courseware-html";
+import { buildCoursewareTemplateInteractiveHtml } from "@/lib/courseware-html";
 import {
   buildCoursewareJsonReference,
   buildCoursewareQualityImprovementFeedback,
@@ -40,6 +40,12 @@ function isCoursewareJson(value: unknown): value is CoursewareJson {
 }
 
 export async function POST(request: Request, context: RouteContext) {
+  const requestStartedAt = Date.now();
+  let stage = "initializing";
+  let jsonDurationMs = 0;
+  let htmlDurationMs = 0;
+  let saveDurationMs = 0;
+
   try {
     const { id } = await context.params;
     const body = (await request.json().catch(() => ({}))) as RequestBody;
@@ -103,6 +109,8 @@ export async function POST(request: Request, context: RouteContext) {
     );
     const referenceCoursewareJson = buildCoursewareJsonReference(currentJson);
 
+    stage = "generating_courseware_json";
+    const jsonStartedAt = Date.now();
     const generatedCoursewareJson = await generateCoursewareJson({
       subject: record.subject,
       grade: record.grade,
@@ -115,20 +123,14 @@ export async function POST(request: Request, context: RouteContext) {
       quality_feedback: qualityFeedback,
       reference_courseware_json: referenceCoursewareJson,
     });
+    jsonDurationMs = Date.now() - jsonStartedAt;
     const jsonConfig = getAIModelConfig("courseware-json");
 
-    const generatedInteractiveHtml = await generateCoursewareInteractiveHtml({
-      subject: record.subject,
-      grade: record.grade,
-      semester: record.semester,
-      chapter: record.chapter,
-      knowledge_point_code: record.knowledge_point_code,
-      knowledge_point_name: record.knowledge_point_name,
-      description: `${record.chapter} - ${record.knowledge_point_name}`,
-      content_markdown: contentMarkdown,
-      structured_courseware: generatedCoursewareJson,
-    });
-    const htmlConfig = getAIModelConfig("courseware-html");
+    stage = "rendering_interactive_html";
+    const htmlStartedAt = Date.now();
+    const generatedInteractiveHtml =
+      buildCoursewareTemplateInteractiveHtml(generatedCoursewareJson);
+    htmlDurationMs = Date.now() - htmlStartedAt;
     const contentQuality = assessCoursewareQuality({
       ...generatedCoursewareJson,
       interactive_html: generatedInteractiveHtml,
@@ -148,8 +150,8 @@ export async function POST(request: Request, context: RouteContext) {
           markdown_model: "confirmed_markdown",
           json_provider: jsonConfig.provider,
           json_model: jsonConfig.model,
-          html_provider: htmlConfig.provider,
-          html_model: htmlConfig.model,
+          html_provider: "local",
+          html_model: "courseware-template-v1",
         },
         generated_at: new Date().toISOString(),
         content_quality: contentQuality,
@@ -157,6 +159,8 @@ export async function POST(request: Request, context: RouteContext) {
     } satisfies CoursewareJson;
 
     const admin = createAdminClient();
+    stage = "saving_revision";
+    const saveStartedAt = Date.now();
     const { error: discardOldPendingError } = await admin
       .from("courseware_revisions")
       .update({
@@ -188,19 +192,35 @@ export async function POST(request: Request, context: RouteContext) {
     if (insertRevisionError) {
       throw insertRevisionError;
     }
+    saveDurationMs = Date.now() - saveStartedAt;
 
     return NextResponse.json({
       record: { id },
       revisionId: revision.id,
       qualityBefore: currentQuality,
       qualityAfter: contentQuality,
+      timings: {
+        totalMs: Date.now() - requestStartedAt,
+        jsonMs: jsonDurationMs,
+        htmlMs: htmlDurationMs,
+        saveMs: saveDurationMs,
+      },
     });
   } catch (error) {
     console.error("[courseware-improve]", error);
     const detail = error instanceof Error ? error.message : JSON.stringify(error);
 
     return NextResponse.json(
-      { error: `课件优化失败：${detail}` },
+      {
+        error: `课件优化失败：${detail}`,
+        stage,
+        timings: {
+          totalMs: Date.now() - requestStartedAt,
+          jsonMs: jsonDurationMs,
+          htmlMs: htmlDurationMs,
+          saveMs: saveDurationMs,
+        },
+      },
       { status: 500 }
     );
   }

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { CoursewareFeedbackLevel } from "./student-courseware-feedback";
 
 export type MasteryLevel = "needs_work" | "basic" | "stable";
 
@@ -25,6 +26,14 @@ type CoursewareProgress = {
   completed_at: string | null;
 };
 
+type CoursewareFeedback = {
+  knowledge_point_code: string;
+  knowledge_point_name: string;
+  understanding_level: CoursewareFeedbackLevel;
+  need_teacher_help: boolean;
+  updated_at: string;
+};
+
 export type StudentKnowledgeMastery = {
   id: string;
   user_id: string;
@@ -47,7 +56,7 @@ export type StudentKnowledgeMastery = {
   updated_at: string;
 };
 
-type MasteryDraft = Omit<StudentKnowledgeMastery, "id" | "created_at" | "updated_at">;
+export type MasteryDraft = Omit<StudentKnowledgeMastery, "id" | "created_at" | "updated_at">;
 
 function clampScore(score: number) {
   return Math.max(0, Math.min(100, Math.round(score)));
@@ -61,11 +70,12 @@ function uniqueKnowledgePoints(
   records: PracticeRecord[],
   tasks: ReviewTask[],
   progressRows: CoursewareProgress[],
+  feedbackRows: CoursewareFeedback[],
   fallbackCode?: string
 ) {
   const map = new Map<string, string>();
 
-  for (const row of [...records, ...tasks, ...progressRows]) {
+  for (const row of [...records, ...tasks, ...progressRows, ...feedbackRows]) {
     if (row.knowledge_point_code) {
       map.set(row.knowledge_point_code, row.knowledge_point_name);
     }
@@ -78,13 +88,14 @@ function uniqueKnowledgePoints(
   return Array.from(map.entries()).map(([code, name]) => ({ code, name }));
 }
 
-function buildMasteryDraft({
+export function buildMasteryDraft({
   userId,
   code,
   name,
   records,
   tasks,
   progressRows,
+  feedbackRows = [],
 }: {
   userId: string;
   code: string;
@@ -92,6 +103,7 @@ function buildMasteryDraft({
   records: PracticeRecord[];
   tasks: ReviewTask[];
   progressRows: CoursewareProgress[];
+  feedbackRows?: CoursewareFeedback[];
 }): MasteryDraft {
   const now = new Date().toISOString();
   const practiceAttempts = records.length;
@@ -103,6 +115,18 @@ function buildMasteryDraft({
   const coursewareCompleted = progressRows.filter(
     (progress) => progress.status === "completed"
   ).length;
+  const blockingFeedback = feedbackRows.filter(
+    (feedback) =>
+      feedback.understanding_level === "not_understood" || feedback.need_teacher_help
+  );
+  const partialFeedback = feedbackRows.filter(
+    (feedback) =>
+      feedback.understanding_level === "partly_understood" && !feedback.need_teacher_help
+  );
+  const understoodFeedback = feedbackRows.filter(
+    (feedback) =>
+      feedback.understanding_level === "understood" && !feedback.need_teacher_help
+  );
   const accuracy = practiceAttempts
     ? Math.round((correctAttempts / practiceAttempts) * 100)
     : 0;
@@ -148,6 +172,17 @@ function buildMasteryDraft({
     reasons.push("存在错题记录");
   }
 
+  if (blockingFeedback.length > 0) {
+    score -= 20;
+    reasons.push("学生反馈没看懂/需要老师跟进");
+  } else if (partialFeedback.length > 0) {
+    score -= 8;
+    reasons.push("学生反馈仍有环节不确定");
+  } else if (understoodFeedback.length > 0) {
+    score += 5;
+    reasons.push("学生反馈已经看懂");
+  }
+
   const masteryScore = clampScore(score);
   const masteryLevel: MasteryLevel =
     masteryScore >= 80 && pendingReviews === 0 && practiceAttempts >= 2
@@ -177,6 +212,7 @@ function buildMasteryDraft({
       tasks[0]?.created_at,
       progressRows[0]?.completed_at,
       progressRows[0]?.last_viewed_at,
+      feedbackRows[0]?.updated_at,
     ]),
     calculated_at: now,
   };
@@ -205,26 +241,44 @@ export async function refreshStudentKnowledgeMastery(
     .eq("user_id", userId)
     .order("last_viewed_at", { ascending: false });
 
+  const feedbackQuery = supabase
+    .from("student_courseware_feedback")
+    .select(
+      "knowledge_point_code, knowledge_point_name, understanding_level, need_teacher_help, updated_at"
+    )
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false });
+
   if (knowledgePointCode) {
     practiceQuery.eq("knowledge_point_code", knowledgePointCode);
     reviewQuery.eq("knowledge_point_code", knowledgePointCode);
     progressQuery.eq("knowledge_point_code", knowledgePointCode);
+    feedbackQuery.eq("knowledge_point_code", knowledgePointCode);
   }
 
-  const [practiceResult, reviewResult, progressResult] = await Promise.all([
+  const [practiceResult, reviewResult, progressResult, feedbackResult] = await Promise.all([
     practiceQuery,
     reviewQuery,
     progressQuery,
+    feedbackQuery,
   ]);
 
   if (practiceResult.error) throw practiceResult.error;
   if (reviewResult.error) throw reviewResult.error;
   if (progressResult.error) throw progressResult.error;
+  if (feedbackResult.error) throw feedbackResult.error;
 
   const records = (practiceResult.data ?? []) as PracticeRecord[];
   const tasks = (reviewResult.data ?? []) as ReviewTask[];
   const progressRows = (progressResult.data ?? []) as CoursewareProgress[];
-  const points = uniqueKnowledgePoints(records, tasks, progressRows, knowledgePointCode);
+  const feedbackRows = (feedbackResult.data ?? []) as CoursewareFeedback[];
+  const points = uniqueKnowledgePoints(
+    records,
+    tasks,
+    progressRows,
+    feedbackRows,
+    knowledgePointCode
+  );
   const savedRows: StudentKnowledgeMastery[] = [];
 
   for (const point of points) {
@@ -233,6 +287,9 @@ export async function refreshStudentKnowledgeMastery(
     const pointProgressRows = progressRows.filter(
       (progress) => progress.knowledge_point_code === point.code
     );
+    const pointFeedbackRows = feedbackRows.filter(
+      (feedback) => feedback.knowledge_point_code === point.code
+    );
     const draft = buildMasteryDraft({
       userId,
       code: point.code,
@@ -240,6 +297,7 @@ export async function refreshStudentKnowledgeMastery(
       records: pointRecords,
       tasks: pointTasks,
       progressRows: pointProgressRows,
+      feedbackRows: pointFeedbackRows,
     });
 
     const { data: existing, error: existingError } = await supabase
