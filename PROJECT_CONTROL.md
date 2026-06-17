@@ -1,49 +1,67 @@
 # PROJECT_CONTROL
 
-## 1. 项目路径
+## 1. Project Path
 
-`D:\Codex\Projects\Active\zhiqiao-AI`
+D:\Codex\Projects\Active\zhiqiao-AI
 
-## 2. 当前分支
+## 2. Current Branch
 
-`codex/content-quality-revision`
+codex/content-quality-revision
 
-## 3. 当前基线
+## 3. Baseline Status
 
-- `git status --short` 为空
-- `npm run typecheck` 通过
-- `npm test` 通过，78 passed
-- `npm run test:courseware` 通过，46 passed
-- `npm run smoke:feedback-loop` 通过，5 passed
-- `git diff --check` 通过
+* `git status --short`: clean
+* `npm run typecheck`: passed
+* `npm test`: passed, 78 tests passed
+* `npm run test:courseware`: passed, 46 tests passed
+* `npm run smoke:feedback-loop`: passed, 5 checks passed
+* `git diff --check`: passed
 
-## 4. 当前最近提交
+## 4. Recent Commits
 
-- `759b3ad` test: add feedback loop validation tooling
-- `9cfa1a9` feat: add teacher review assignments
-- `2b2b59c` feat: add courseware feedback loop
-- `75a66a1` feat: add k12 external import staging
-- `796bbc9` feat: add k12 knowledge base foundation
+* `70b516b` chore: add project control baseline
+* `759b3ad` test: add feedback loop validation tooling
+* `9cfa1a9` feat: add teacher review assignments
+* `2b2b59c` feat: add courseware feedback loop
+* `75a66a1` feat: add k12 external import staging
+* `796bbc9` feat: add k12 knowledge base foundation
 
-## 5. Codex 每轮执行规则
+## 5. Codex Execution Rules
 
-- 每轮开始必须先 `git status --short`
-- 不得覆盖已有未提交改动
-- 每轮只做一个明确任务
-- 不得顺手优化
-- 不得大规模重构
-- 不得修改无关文件
-- 测试失败必须停止并汇报
-- 通过测试后才允许提交
+* Every round must start with `git status --short`.
+* Do not overwrite existing uncommitted changes.
+* Each round must have exactly one clear task.
+* Do not make unrelated optimizations.
+* Do not perform large refactors.
+* Do not modify unrelated files.
+* Do not change database schema unless the task explicitly requires it.
+* Do not change routing structure unless the task explicitly requires it.
+* If a test fails, stop and report the failure.
+* Only commit after the required checks pass.
 
-## 6. GPT 使用规则
+## 6. GPT Usage Rules
 
-- GPT 只能基于 `PROJECT_CONTROL.md` 和 Codex 输出生成下一轮指令
-- 不得重新规划整个项目
-- 不得扩大任务范围
-- 不得推翻已有提交
-- 每轮只生成一个明确 Codex 任务
+* GPT must generate Codex instructions based on this file and the latest Codex output.
+* GPT must not redesign the whole project.
+* GPT must not expand the task scope.
+* GPT must not override existing completed commits.
+* GPT should produce one clear Codex task per round.
 
-## 7. 当前下一步
+## 7. Current Next Step
 
-等待 GPT 基于本次接回状态生成下一轮唯一任务，Codex 不得自行继续开发。
+Wait for GPT to generate the next single Codex task based on the current project state.
+
+Codex must not continue feature development on its own.
+
+## 8. Required Output Format After Each Codex Round
+
+Codex must report:
+
+1. Current `git status --short`
+2. Files changed
+3. Reason for each changed file
+4. Commands run
+5. Test results
+6. Commit hash, if committed
+7. Remaining issues
+8. Suggested next task
