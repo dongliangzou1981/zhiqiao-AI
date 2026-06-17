@@ -567,3 +567,87 @@
   - 教师登录态访问 `/teacher`、`/teacher/lesson-generator`、`/teacher/courseware`、`/teacher/courseware-history`、`/teacher/knowledge-explain`、`/teacher/model-settings` 均返回 200。
 - 类型检查：
   - `npx tsc --noEmit` 通过。
+## P2 阶段35验证：课件优化候选版与老师确认流程
+
+- `npx tsc --noEmit`：通过。
+- `npx --yes tsx --test lib/courseware-revisions.test.ts lib/courseware-improvement.test.ts lib/courseware-quality.test.ts lib/courseware-playback.test.ts lib/courseware-storyboard.test.ts lib/courseware-edit.test.ts`：通过，22 项测试通过。
+- 新增测试覆盖：
+  - 修订状态只接受 `pending | applied | discarded`。
+  - 只取最新 pending 候选版。
+  - 旧 pending 修订可批量标记为 discarded。
+- HTTP 验证：
+  - 未登录调用 `POST /api/courseware/{id}/improve` 返回 401。
+  - 未登录调用 `POST /api/courseware/{id}/revisions/{revisionId}/apply` 返回 401。
+  - 未登录调用 `POST /api/courseware/{id}/revisions/{revisionId}/discard` 返回 401。
+  - 未登录访问课件详情页返回 307，并跳转登录页。
+- 已确认：
+  - improve 不再直接覆盖正式课件。
+  - 学生端仍只读取正式 `coursewares.content_json`。
+
+## P2 阶段34验证：质量问题驱动的课件优化闭环
+
+- `npx tsc --noEmit`：通过。
+- `npx --yes tsx --test lib/courseware-improvement.test.ts lib/courseware-quality.test.ts lib/courseware-playback.test.ts lib/courseware-storyboard.test.ts lib/courseware-edit.test.ts`：通过，19 项测试通过。
+- 规则验证：
+  - `buildCoursewareQualityImprovementFeedback` 只把失败检查转为模型优化要求。
+  - `buildCoursewareJsonReference` 会省略旧课件中的大段 HTML，避免把旧版互动页原样喂回模型。
+- HTTP 验证：
+  - 未登录访问 `/teacher/courseware-history/2e60da6f-ba1e-4f99-9aee-9efc71ce65c2` 返回 307，跳转 `/auth/login?redirect=...`。
+  - 未登录调用 `POST /api/courseware/2e60da6f-ba1e-4f99-9aee-9efc71ce65c2/improve` 返回 401。
+- 已确认：
+  - 本轮没有新增数据库表或字段。
+  - 本轮没有修改模型密钥配置。
+  - 本轮不进入学情分析新模块。
+## P2 阶段36验证：课件优化候选版改动摘要
+
+- TypeScript 验证通过：
+  - `npx tsc --noEmit`
+- 自动化测试通过：
+  - `npx --yes tsx --test lib/courseware-revision-diff.test.ts lib/courseware-revisions.test.ts lib/courseware-improvement.test.ts lib/courseware-quality.test.ts lib/courseware-playback.test.ts lib/courseware-storyboard.test.ts lib/courseware-edit.test.ts`
+  - 结果：23 个测试全部通过。
+- 已确认行为：
+  - 候选版改动摘要能显示质量分变化。
+  - 候选版改动摘要能显示幻灯片页数变化。
+  - 候选版改动摘要能显示动态讲解步骤变化。
+  - 候选版改动摘要能显示基础练习数量变化。
+  - 候选版改动摘要能列出新增或重写的页面标题。
+  - 候选版确认流程仍保持“老师确认后才覆盖正式课件”的产品原则。
+## P2 阶段37验证：候选版质量复核摘要
+
+- TypeScript 验证通过：
+  - `npx tsc --noEmit`
+- 自动化测试通过：
+  - `npx --yes tsx --test lib/courseware-quality-summary.test.ts lib/courseware-revision-diff.test.ts lib/courseware-revisions.test.ts lib/courseware-improvement.test.ts lib/courseware-quality.test.ts lib/courseware-playback.test.ts lib/courseware-storyboard.test.ts lib/courseware-edit.test.ts`
+  - 结果：25 个测试全部通过。
+- 已确认行为：
+  - 能把未通过的 required 质量项归入“必须复核”。
+  - 能把未通过的 recommended 质量项归入“建议优化”。
+  - 全部通过时显示“可进入人工确认”。
+  - 候选版对比区同时保留采用新版、放弃新版、当前版预览、优化版预览。
+## P2 阶段38验证：候选版采用保护
+
+- TypeScript 验证通过：
+  - `npx tsc --noEmit`
+- 自动化测试通过：
+  - `npx --yes tsx --test lib/courseware-revision-apply-guard.test.ts lib/courseware-quality-summary.test.ts lib/courseware-revision-diff.test.ts lib/courseware-revisions.test.ts lib/courseware-improvement.test.ts lib/courseware-quality.test.ts lib/courseware-playback.test.ts lib/courseware-storyboard.test.ts lib/courseware-edit.test.ts`
+  - 结果：28 个测试全部通过。
+- 已确认行为：
+  - 必选质量项通过时，候选版可直接采用。
+  - 必选质量项未通过时，默认不允许直接采用。
+  - 老师勾选风险确认后，仍可自主采用候选版。
+  - 放弃候选版流程不受采用保护影响。
+## P2 阶段39-44验证：课件质量闭环增强
+
+- TypeScript 验证通过：
+  - `npx tsc --noEmit`
+- 自动化测试通过：
+  - `npx --yes tsx --test lib/courseware-improve-presets.test.ts lib/courseware-publish-guard.test.ts lib/courseware-human-review.test.ts lib/courseware-improve-ui.test.ts lib/courseware-adoption-advice.test.ts lib/courseware-revision-apply-guard.test.ts lib/courseware-quality-summary.test.ts lib/courseware-revision-diff.test.ts lib/courseware-revisions.test.ts lib/courseware-improvement.test.ts lib/courseware-quality.test.ts lib/courseware-playback.test.ts lib/courseware-storyboard.test.ts lib/courseware-edit.test.ts`
+  - 结果：43 个测试全部通过。
+- 浏览器验证通过：
+  - 课件详情页可打开。
+  - 页面出现教师人工验收清单。
+  - 页面出现优化候选版预设按钮：补全推导、减少 AI 腔、优化投屏。
+  - 浏览器 console 无应用错误。
+- API 验证：
+  - 未登录调用候选版 apply API 返回 401。
+  - 未登录访问课件详情仍返回 307。

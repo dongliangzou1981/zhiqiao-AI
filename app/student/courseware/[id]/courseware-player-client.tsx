@@ -8,6 +8,10 @@ import {
   getDynamicReplayTargetId,
 } from "@/lib/courseware-playback";
 import type { CoursewareJson } from "@/lib/courseware-types";
+import {
+  StudentCoursewareFeedbackPanel,
+  type StudentCoursewareFeedback,
+} from "./student-courseware-feedback-panel";
 
 type StudentPracticeRecord = {
   id: string;
@@ -27,6 +31,7 @@ type CoursewarePlayerClientProps = {
   practiceRecords: StudentPracticeRecord[];
   createdAt: string;
   initialProgress: StudentCoursewareProgress | null;
+  initialFeedback: StudentCoursewareFeedback | null;
   focusPracticeIndex: number | null;
 };
 
@@ -89,6 +94,7 @@ export function CoursewarePlayerClient({
   practiceRecords,
   createdAt,
   initialProgress,
+  initialFeedback,
   focusPracticeIndex,
 }: CoursewarePlayerClientProps) {
   const initialSlideIndex =
@@ -414,6 +420,11 @@ export function CoursewarePlayerClient({
               标记完成学习
             </button>
           </div>
+
+          <StudentCoursewareFeedbackPanel
+            coursewareId={coursewareId}
+            initialFeedback={initialFeedback}
+          />
 
           <section className="grid gap-4 lg:grid-cols-3">
             <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">

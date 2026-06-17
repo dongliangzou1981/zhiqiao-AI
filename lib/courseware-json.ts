@@ -67,6 +67,8 @@ export type CoursewareInteractiveHtml = {
 
 type GenerateCoursewareJsonParams = GenerateCoursewareParams & {
   content_markdown: string;
+  quality_feedback?: string;
+  reference_courseware_json?: string;
 };
 
 export type DynamicStoryboard = {
@@ -483,7 +485,17 @@ export async function generateCoursewareJson(
   }
 
   const promptTemplate = await getPromptTemplate();
-  const userPrompt = replaceAll(promptTemplate, normalized);
+  const qualityFeedback = params.quality_feedback?.trim();
+  const referenceCoursewareJson = params.reference_courseware_json?.trim();
+  const improvementInstruction = [
+    qualityFeedback
+      ? `\n\n## 本次质量优化要求\n\n${qualityFeedback}`
+      : "",
+    referenceCoursewareJson
+      ? `\n\n## 当前课件结构参考\n\n下面是当前已生成的结构化课件。请只把它当作问题定位参考，不要照抄，不要套模板，要重新生成更适合课堂的完整版本。\n\n\`\`\`json\n${referenceCoursewareJson}\n\`\`\``
+      : "",
+  ].join("");
+  const userPrompt = `${replaceAll(promptTemplate, normalized)}${improvementInstruction}`;
   const client = await getAIClient();
   const model = getAIModel("courseware-json");
 

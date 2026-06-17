@@ -787,3 +787,115 @@ eea89a5 完成Supabase数据库设计
   - 在教师端模型设置页继续做“任务级模型选择 + 成本提示 + 默认低成本模型 / 高质量模型切换”。
   - 继续用 `J-MATH-RJ-71-01-03` 数轴和 `J-MATH-RJ-71-05-03` 一元一次方程做 GPT 输出质量对比。
   - 后续若接入更强模型，优先用于课件生成、结构化 JSON 和动态分镜，不建议默认给学生高频答疑使用高成本模型。
+## P2 阶段35交接：课件优化候选版与老师确认流程
+
+- 本轮目标：避免 AI 优化课件时直接覆盖当前可用版本，改为老师确认后才采用。
+- 已完成：
+  - 新增 `courseware_revisions` 表和迁移脚本。
+  - `improve` API 现在生成 pending 候选版，不直接改正式课件。
+  - 新增 `apply` / `discard` API。
+  - 教师课件详情页新增当前版与优化版对比区。
+  - 学生端读取路径未变，候选版不会暴露给学生。
+- 使用规则：
+  - 再次生成优化版本时，旧 pending 会自动标记为 `discarded`。
+  - 老师点击“采用新版”后，正式课件更新，发布状态回到草稿。
+  - 老师点击“放弃新版”后，正式课件不变。
+- 验证：
+  - `npx tsc --noEmit` 通过。
+  - 课件相关测试 22 项通过。
+  - improve/apply/discard 未登录均返回 401。
+- 后续重点：
+  - 应用 `supabase/add-courseware-revisions.sql` 到远端 Supabase 后，用教师账号跑一次真实候选版生成、采用、放弃链路。
+
+## P2 阶段34交接：质量问题驱动的课件优化闭环
+
+- 本轮目标：把“内容效果检查”从静态提示推进为可执行优化动作。
+- 已完成：
+  - 新增 `POST /api/courseware/[id]/improve`。
+  - 新增 `app/teacher/courseware-history/[id]/courseware-quality-improver.tsx`。
+  - 课件详情页内容质量面板已显示优化入口。
+  - 新增 `lib/courseware-improvement.ts` 与测试。
+  - `generateCoursewareJson` 支持质量反馈和旧课件 JSON 参考。
+- 行为说明：
+  - 教师点击优化后，会重新生成 `content_json.interactive_html` 和结构化课件。
+  - 优化会把课件发布状态重置为草稿，避免未确认内容直接给学生。
+  - 当前不新增数据库字段，不新增表。
+- 验证：
+  - `npx tsc --noEmit` 通过。
+  - 相关课件测试 19 项通过。
+  - 未登录页面保护 307 正常。
+  - 未登录 API 保护 401 正常。
+- 下一步建议：
+  - 用教师测试账号对 `J-MATH-RJ-71-05-03` 连续生成 2-3 版，人工比较优化前后是否更像真实课堂 PPT。
+  - 如果质量分需要资源库排序，后续再把质量分从 JSON 元数据提升为可索引字段。
+## P2 阶段36交接：课件优化候选版改动摘要
+
+- 已完成：在课件候选版确认流程中加入“新版改了什么”摘要，帮助老师快速判断候选版是否值得采用。
+- 关键文件：
+  - `lib/courseware-revision-diff.ts`
+  - `lib/courseware-revision-diff.test.ts`
+  - `app/teacher/courseware-history/[id]/courseware-revision-comparison.tsx`
+- 当前流程：
+  - `POST /api/courseware/[id]/improve` 生成 pending 候选版，不覆盖正式课件。
+  - 教师详情页展示当前版 / 候选版预览、质量分、改动摘要。
+  - 教师点击“采用新版”后才写回 `coursewares.content_json`，并取消发布状态。
+  - 教师点击“放弃新版”只废弃候选版，不影响正式课件和学生端。
+- 已验证：
+  - `npx tsc --noEmit`
+  - 课件相关测试 23 个全部通过。
+- 仍需注意：`courseware_revisions` 远程 Supabase 迁移尚未通过 MCP/CLI 自动应用，生产或远程测试前需要手动执行 `supabase/add-courseware-revisions.sql`。
+## P2 阶段37交接：候选版质量复核摘要
+
+- 已完成：候选版对比区新增“新版还要复核什么”，把质量检查未通过项拆成必选项和建议项。
+- 关键文件：
+  - `lib/courseware-quality-summary.ts`
+  - `lib/courseware-quality-summary.test.ts`
+  - `app/teacher/courseware-history/[id]/courseware-revision-comparison.tsx`
+- 当前体验：
+  - 老师生成优化候选版后，可以先看“新版改了什么”。
+  - 再看“新版还要复核什么”，优先处理必选项。
+  - 只有老师点击“采用新版”后，候选版才进入正式课件。
+- 已验证：
+  - `npx tsc --noEmit`
+  - 课件相关测试 25 个全部通过。
+- 下一步建议：继续围绕样板知识点做内容效果打磨，优先减少质量检查中的必选项失败，并做真实教师视角人工验收。
+## P2 阶段38交接：候选版采用保护
+
+- 已完成：优化候选版若仍有必选质量项未通过，老师必须勾选风险确认后才能采用新版。
+- 关键文件：
+  - `lib/courseware-revision-apply-guard.ts`
+  - `lib/courseware-revision-apply-guard.test.ts`
+  - `app/teacher/courseware-history/[id]/courseware-revision-comparison.tsx`
+- 当前体验：
+  - 候选版必选项通过：老师可直接点击“采用新版”。
+  - 候选版必选项未通过：采用按钮禁用，并显示风险确认勾选项。
+  - 老师勾选确认后，可以继续采用新版。
+  - 放弃新版不受影响，仍可直接废弃候选版。
+- 已验证：
+  - `npx tsc --noEmit`
+  - 课件相关测试 28 个全部通过。
+## P2 阶段39-44交接：课件质量闭环继续增强
+
+- 已完成阶段39：候选版采用保护 API 化。
+  - apply API 读取 `confirmQualityRisk`。
+  - 候选版必选质量项未通过且未确认风险时，API 返回 409。
+- 已完成阶段40：候选版课堂采用建议。
+  - 新增 `lib/courseware-adoption-advice.ts`。
+  - 候选版对比区显示“建议采用新版 / 可试讲但需先复核 / 建议暂缓采用”。
+- 已完成阶段41：优化候选版入口体验整理。
+  - 新增 `lib/courseware-improve-ui.ts`。
+  - 重写 `courseware-quality-improver.tsx` 为清晰中文版本。
+- 已完成阶段42：教师人工验收清单。
+  - 新增 `lib/courseware-human-review.ts`。
+  - 课件详情页展示数学正确性、推导完整性、投屏可用性、学生复习可用性 4 个验收维度。
+- 已完成阶段43：发布到学生端质量风险确认。
+  - 新增 `lib/courseware-publish-guard.ts`。
+  - 未通过必选质量项的课件发布给学生端前，需要老师勾选风险确认。
+- 已完成阶段44：优化候选版常用指令预设。
+  - 新增 `lib/courseware-improve-presets.ts`。
+  - 老师可一键选择补全推导、讲得更慢、减少 AI 腔、优化投屏。
+- 已验证：
+  - `npx tsc --noEmit`
+  - 课件相关测试 43 个全部通过。
+  - 浏览器验证课件详情页无应用 console error。
+- 仍需注意：`courseware_revisions` 远程数据库迁移仍需在 Supabase 执行。

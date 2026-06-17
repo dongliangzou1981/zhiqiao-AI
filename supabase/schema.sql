@@ -170,6 +170,30 @@ create index if not exists coursewares_published_learning_idx
   on public.coursewares (knowledge_point_code, created_at desc)
   where is_published = true and content_json is not null;
 
+create table if not exists public.courseware_revisions (
+  id uuid primary key default gen_random_uuid(),
+  courseware_id uuid not null references public.coursewares (id) on delete cascade,
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  source_content_json jsonb not null,
+  candidate_content_json jsonb not null,
+  instruction text null,
+  quality_before jsonb null,
+  quality_after jsonb null,
+  status text not null default 'pending',
+  created_at timestamptz not null default now(),
+  applied_at timestamptz null,
+
+  constraint courseware_revisions_status_check check (status in ('pending', 'applied', 'discarded'))
+);
+
+comment on table public.courseware_revisions is 'AI 课件优化候选版。老师确认前不覆盖 coursewares.content_json';
+
+create index if not exists courseware_revisions_courseware_status_created_idx
+  on public.courseware_revisions (courseware_id, status, created_at desc);
+
+create index if not exists courseware_revisions_user_created_idx
+  on public.courseware_revisions (user_id, created_at desc);
+
 -- -----------------------------------------------------------------------------
 -- 7. student_practice_records — 学生基础练习作答记录
 -- -----------------------------------------------------------------------------
@@ -272,7 +296,41 @@ create index if not exists student_courseware_progress_knowledge_point_code_idx
   on public.student_courseware_progress (knowledge_point_code);
 
 -- -----------------------------------------------------------------------------
--- 10. student_knowledge_mastery — 学生知识点基础掌握信号
+-- 10. student_courseware_feedback -- student understanding feedback
+-- -----------------------------------------------------------------------------
+create table if not exists public.student_courseware_feedback (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  courseware_id uuid not null references public.coursewares (id) on delete cascade,
+  knowledge_point_code text not null,
+  knowledge_point_name text not null,
+  understanding_level text not null,
+  need_teacher_help boolean not null default false,
+  feedback_text text null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+
+  constraint student_courseware_feedback_unique unique (user_id, courseware_id),
+  constraint student_courseware_feedback_kp_code_not_empty check (char_length(trim(knowledge_point_code)) > 0),
+  constraint student_courseware_feedback_kp_name_not_empty check (char_length(trim(knowledge_point_name)) > 0),
+  constraint student_courseware_feedback_level_valid check (
+    understanding_level in ('understood', 'partly_understood', 'not_understood')
+  )
+);
+
+comment on table public.student_courseware_feedback is '学生课件理解反馈，记录是否看懂以及是否需要老师跟进';
+
+create index if not exists student_courseware_feedback_user_updated_idx
+  on public.student_courseware_feedback (user_id, updated_at desc);
+
+create index if not exists student_courseware_feedback_courseware_id_idx
+  on public.student_courseware_feedback (courseware_id);
+
+create index if not exists student_courseware_feedback_knowledge_point_code_idx
+  on public.student_courseware_feedback (knowledge_point_code);
+
+-- -----------------------------------------------------------------------------
+-- 11. student_knowledge_mastery — 学生知识点基础掌握信号
 -- -----------------------------------------------------------------------------
 create table if not exists public.student_knowledge_mastery (
   id uuid primary key default gen_random_uuid(),
@@ -408,9 +466,11 @@ alter table public.qa_records enable row level security;
 alter table public.knowledge_points enable row level security;
 alter table public.knowledge_explanations enable row level security;
 alter table public.coursewares enable row level security;
+alter table public.courseware_revisions enable row level security;
 alter table public.student_practice_records enable row level security;
 alter table public.student_review_tasks enable row level security;
 alter table public.student_courseware_progress enable row level security;
+alter table public.student_courseware_feedback enable row level security;
 alter table public.student_knowledge_mastery enable row level security;
 alter table public.teacher_student_links enable row level security;
 
@@ -427,6 +487,9 @@ drop policy if exists "coursewares_teacher_select_own" on public.coursewares;
 drop policy if exists "coursewares_teacher_insert_own" on public.coursewares;
 drop policy if exists "coursewares_teacher_update_publish_own" on public.coursewares;
 drop policy if exists "coursewares_student_select_learning" on public.coursewares;
+drop policy if exists "courseware_revisions_teacher_select_own" on public.courseware_revisions;
+drop policy if exists "courseware_revisions_teacher_insert_own" on public.courseware_revisions;
+drop policy if exists "courseware_revisions_teacher_update_own" on public.courseware_revisions;
 drop policy if exists "student_practice_records_student_select_own" on public.student_practice_records;
 drop policy if exists "student_practice_records_teacher_select_linked" on public.student_practice_records;
 drop policy if exists "student_practice_records_student_insert_own" on public.student_practice_records;
@@ -438,6 +501,10 @@ drop policy if exists "student_courseware_progress_student_select_own" on public
 drop policy if exists "student_courseware_progress_student_insert_own" on public.student_courseware_progress;
 drop policy if exists "student_courseware_progress_student_update_own" on public.student_courseware_progress;
 drop policy if exists "student_courseware_progress_teacher_select_linked" on public.student_courseware_progress;
+drop policy if exists "student_courseware_feedback_student_select_own" on public.student_courseware_feedback;
+drop policy if exists "student_courseware_feedback_student_insert_own" on public.student_courseware_feedback;
+drop policy if exists "student_courseware_feedback_student_update_own" on public.student_courseware_feedback;
+drop policy if exists "student_courseware_feedback_teacher_select_linked" on public.student_courseware_feedback;
 drop policy if exists "student_knowledge_mastery_student_select_own" on public.student_knowledge_mastery;
 drop policy if exists "student_knowledge_mastery_teacher_select_linked" on public.student_knowledge_mastery;
 drop policy if exists "student_knowledge_mastery_student_insert_own" on public.student_knowledge_mastery;
@@ -578,6 +645,34 @@ create policy "coursewares_teacher_update_publish_own"
     )
   );
 
+create policy "courseware_revisions_teacher_select_own"
+  on public.courseware_revisions for select
+  to authenticated
+  using (
+    auth.uid() = user_id
+    and private.is_teacher(auth.uid())
+  );
+
+create policy "courseware_revisions_teacher_insert_own"
+  on public.courseware_revisions for insert
+  to authenticated
+  with check (
+    auth.uid() = user_id
+    and private.is_teacher(auth.uid())
+  );
+
+create policy "courseware_revisions_teacher_update_own"
+  on public.courseware_revisions for update
+  to authenticated
+  using (
+    auth.uid() = user_id
+    and private.is_teacher(auth.uid())
+  )
+  with check (
+    auth.uid() = user_id
+    and private.is_teacher(auth.uid())
+  );
+
 create policy "student_practice_records_student_select_own"
   on public.student_practice_records for select
   to authenticated
@@ -716,6 +811,58 @@ create policy "student_courseware_progress_student_update_own"
     )
   );
 
+create policy "student_courseware_feedback_student_select_own"
+  on public.student_courseware_feedback for select
+  to authenticated
+  using (
+    auth.uid() = user_id
+    and exists (
+      select 1 from public.profiles p
+      where p.id = auth.uid() and p.role = 'student'
+    )
+  );
+
+create policy "student_courseware_feedback_teacher_select_linked"
+  on public.student_courseware_feedback for select
+  to authenticated
+  using (
+    exists (
+      select 1 from public.teacher_student_links l
+      where l.teacher_id = auth.uid()
+        and l.student_id = student_courseware_feedback.user_id
+    )
+    and private.is_teacher(auth.uid())
+  );
+
+create policy "student_courseware_feedback_student_insert_own"
+  on public.student_courseware_feedback for insert
+  to authenticated
+  with check (
+    auth.uid() = user_id
+    and exists (
+      select 1 from public.profiles p
+      where p.id = auth.uid() and p.role = 'student'
+    )
+  );
+
+create policy "student_courseware_feedback_student_update_own"
+  on public.student_courseware_feedback for update
+  to authenticated
+  using (
+    auth.uid() = user_id
+    and exists (
+      select 1 from public.profiles p
+      where p.id = auth.uid() and p.role = 'student'
+    )
+  )
+  with check (
+    auth.uid() = user_id
+    and exists (
+      select 1 from public.profiles p
+      where p.id = auth.uid() and p.role = 'student'
+    )
+  );
+
 create policy "student_knowledge_mastery_student_select_own"
   on public.student_knowledge_mastery for select
   to authenticated
@@ -804,11 +951,22 @@ grant select, insert on public.knowledge_explanations to authenticated;
 revoke all on public.coursewares from anon, authenticated;
 grant select, insert on public.coursewares to authenticated;
 grant update (content_json, is_published, published_at) on public.coursewares to authenticated;
+revoke all on public.courseware_revisions from anon, authenticated;
+grant select, insert on public.courseware_revisions to authenticated;
+grant update (status, applied_at) on public.courseware_revisions to authenticated;
 grant select, insert on public.student_practice_records to authenticated;
 grant select, insert on public.student_review_tasks to authenticated;
 grant update (status, completed_at) on public.student_review_tasks to authenticated;
 grant select, insert on public.student_courseware_progress to authenticated;
 grant update (last_slide_index, slide_count, status, last_viewed_at, completed_at) on public.student_courseware_progress to authenticated;
+revoke all on public.student_courseware_feedback from anon, authenticated;
+grant select, insert on public.student_courseware_feedback to authenticated;
+grant update (
+  understanding_level,
+  need_teacher_help,
+  feedback_text,
+  updated_at
+) on public.student_courseware_feedback to authenticated;
 grant select, insert on public.student_knowledge_mastery to authenticated;
 grant update (
   knowledge_point_name,

@@ -788,3 +788,161 @@ Codex
   - 本次以 HTTP 和受保护 API 验证为主，未做真实浏览器点击生成流程复验。
   - `AI_PROXY_URL` 只用于本地网络需要代理的环境，线上部署应根据实际网络决定是否配置。
   - 不同 GPT 模型成本不同，后续需要按任务区分默认模型和高质量模型，避免教师/学生端成本失控。
+## P2 阶段35：课件优化候选版与老师确认流程
+
+- 当前阶段：教师端内容效果打磨，目标是让 AI 优化结果先进入候选版，由老师确认后再替换正式课件。
+- 新增能力：
+  - 新增 `courseware_revisions` 表，用于保存课件优化候选版。
+  - `POST /api/courseware/[id]/improve` 改为写入 pending 修订，不再直接覆盖 `coursewares.content_json`。
+  - 新增 `POST /api/courseware/[id]/revisions/[revisionId]/apply`，老师采用新版后才写入正式课件，并重置发布状态。
+  - 新增 `POST /api/courseware/[id]/revisions/[revisionId]/discard`，老师可放弃候选版。
+  - 教师课件详情页新增“当前版本 / 优化版本”对比区，展示两版质量分和动态课件预览。
+  - 学生端仍只读取正式 `coursewares.content_json`，未确认候选版不会影响学生。
+- 新增/更新文件：
+  - `supabase/add-courseware-revisions.sql`
+  - `supabase/schema.sql`
+  - `lib/courseware-revisions.ts`
+  - `lib/courseware-revisions.test.ts`
+  - `app/api/courseware/[id]/improve/route.ts`
+  - `app/api/courseware/[id]/revisions/[revisionId]/apply/route.ts`
+  - `app/api/courseware/[id]/revisions/[revisionId]/discard/route.ts`
+  - `app/teacher/courseware-history/[id]/courseware-revision-comparison.tsx`
+  - `app/teacher/courseware-history/[id]/courseware-quality-improver.tsx`
+  - `app/teacher/courseware-history/[id]/page.tsx`
+- 验证：
+  - `npx tsc --noEmit` 通过。
+  - `npx --yes tsx --test lib/courseware-revisions.test.ts lib/courseware-improvement.test.ts lib/courseware-quality.test.ts lib/courseware-playback.test.ts lib/courseware-storyboard.test.ts lib/courseware-edit.test.ts` 通过，22 项测试通过。
+  - 未登录调用 improve/apply/discard 均返回 401。
+  - 未登录访问课件详情页返回 307 到登录页。
+
+## P2 阶段34：质量问题驱动的课件优化闭环
+
+- 当前阶段：内容效果优先，不新增大模块，先把样板课件打磨到更适合课堂使用。
+- 新增能力：
+  - 课件详情页的“内容效果检查”面板已接入“按质量问题优化课件”操作。
+  - 老师可补充一句优化要求，例如“同类项合并讲慢一点”“少用固定左右版式”。
+  - 新增 `POST /api/courseware/[id]/improve`，读取当前课件、质量报告和老师补充要求，重新生成结构化课件与互动 HTML 幻灯片。
+  - 新增 `lib/courseware-improvement.ts`，统一生成质量优化反馈，并在回传旧课件参考时省略大段 HTML。
+  - `generateCoursewareJson` 支持接收质量反馈和当前课件 JSON 参考，避免只做模板化局部修补。
+  - 优化后课件会回到草稿状态，避免未经老师确认的内容直接发布给学生。
+- 新增/更新文件：
+  - `app/api/courseware/[id]/improve/route.ts`
+  - `app/teacher/courseware-history/[id]/courseware-quality-improver.tsx`
+  - `app/teacher/courseware-history/[id]/page.tsx`
+  - `lib/courseware-improvement.ts`
+  - `lib/courseware-improvement.test.ts`
+  - `lib/courseware-json.ts`
+- 验证：
+  - `npx tsc --noEmit` 通过。
+  - `npx --yes tsx --test lib/courseware-improvement.test.ts lib/courseware-quality.test.ts lib/courseware-playback.test.ts lib/courseware-storyboard.test.ts lib/courseware-edit.test.ts` 通过，19 项测试通过。
+  - 未登录访问 `/teacher/courseware-history/2e60da6f-ba1e-4f99-9aee-9efc71ce65c2` 返回 307，并跳转登录页。
+  - 未登录调用 `POST /api/courseware/2e60da6f-ba1e-4f99-9aee-9efc71ce65c2/improve` 返回 401。
+## P2 阶段36：课件优化候选版改动摘要
+
+- 当前状态：已完成。
+- 本阶段目标：让老师在“采用新版 / 放弃新版”前，看懂 AI 优化候选版到底改了什么，避免只靠两份预览盲选。
+- 新增能力：
+  - 新增 `lib/courseware-revision-diff.ts`，基于当前版、候选版和质量报告生成老师可读的改动摘要。
+  - 新增 `lib/courseware-revision-diff.test.ts`，覆盖质量分变化、幻灯片页数、动态讲解步骤、基础练习数量和新增页面标题。
+  - 更新 `app/teacher/courseware-history/[id]/courseware-revision-comparison.tsx`，在候选版对比区显示“新版改了什么”。
+- 产品原则：候选版仍不直接覆盖正式课件，老师确认后才采用；学生端仍只读取已确认的 `coursewares.content_json`。
+- 验证：
+  - `npx tsc --noEmit` 通过。
+  - `npx --yes tsx --test lib/courseware-revision-diff.test.ts lib/courseware-revisions.test.ts lib/courseware-improvement.test.ts lib/courseware-quality.test.ts lib/courseware-playback.test.ts lib/courseware-storyboard.test.ts lib/courseware-edit.test.ts` 通过，23 个测试全部通过。
+## P2 阶段37：候选版质量复核摘要
+
+- 当前状态：已完成。
+- 本阶段目标：在老师采用优化候选版前，明确提示“新版还要复核什么”，避免只看质量分和预览画面。
+- 新增能力：
+  - 新增 `lib/courseware-quality-summary.ts`，将 `CoursewareQualityReport` 中未通过的必选项和建议项整理为老师可读摘要。
+  - 新增 `lib/courseware-quality-summary.test.ts`，覆盖必选项/建议项拆分，以及全部通过时的确认态。
+  - 更新候选版对比区，新增“新版还要复核什么”模块。
+- 产品原则：自动质量检查只做辅助提醒，不替代老师对数学正确性、推导完整性、课堂适用性的人工确认。
+- 验证：
+  - `npx tsc --noEmit` 通过。
+  - `npx --yes tsx --test lib/courseware-quality-summary.test.ts lib/courseware-revision-diff.test.ts lib/courseware-revisions.test.ts lib/courseware-improvement.test.ts lib/courseware-quality.test.ts lib/courseware-playback.test.ts lib/courseware-storyboard.test.ts lib/courseware-edit.test.ts` 通过，25 个测试全部通过。
+## P2 阶段38：候选版采用保护
+
+- 当前状态：已完成。
+- 本阶段目标：当优化候选版仍有必选质量项未通过时，防止老师误点“采用新版”直接覆盖正式课件。
+- 新增能力：
+  - 新增 `lib/courseware-revision-apply-guard.ts`，根据候选版质量报告和老师确认状态判断是否允许采用。
+  - 新增 `lib/courseware-revision-apply-guard.test.ts`，覆盖必选项通过、必选项未通过、老师确认风险后三种情况。
+  - 更新候选版对比区：若优化版未通过必选项，老师需要勾选“我已复核上述必选质量问题，确认仍要采用这个优化版本”后才能采用新版。
+- 产品原则：不剥夺老师最终决策权，但把质量风险前置，避免 AI 候选版失控覆盖原可用课件。
+- 验证：
+  - `npx tsc --noEmit` 通过。
+  - `npx --yes tsx --test lib/courseware-revision-apply-guard.test.ts lib/courseware-quality-summary.test.ts lib/courseware-revision-diff.test.ts lib/courseware-revisions.test.ts lib/courseware-improvement.test.ts lib/courseware-quality.test.ts lib/courseware-playback.test.ts lib/courseware-storyboard.test.ts lib/courseware-edit.test.ts` 通过，28 个测试全部通过。
+## P2 阶段39：候选版采用保护 API 化
+
+- 当前状态：已完成。
+- 本阶段目标：把候选版采用风险确认从前端保护补到 API 层，避免未来其他入口绕过页面直接覆盖正式课件。
+- 新增能力：
+  - `POST /api/courseware/[id]/revisions/[revisionId]/apply` 支持读取 `confirmQualityRisk`。
+  - apply API 会读取 `quality_after`，若缺失则基于候选版重新评估质量。
+  - 若优化版必选质量项未通过且未确认风险，API 返回 409，并提示需要质量风险确认。
+  - 前端“采用新版”请求会发送 `confirmQualityRisk`。
+- 验证：
+  - `npx tsc --noEmit` 通过。
+  - 课件相关 28 个测试全部通过。
+  - 未登录调用 apply API 返回 401。
+## P2 阶段40：候选版课堂采用建议
+
+- 当前状态：已完成。
+- 本阶段目标：把质量分和复核项转成老师更容易判断的课堂采用建议，减少只看分数带来的误判。
+- 新增能力：
+  - 新增 `lib/courseware-adoption-advice.ts`，输出 `建议采用新版`、`可试讲，但需先复核`、`建议暂缓采用` 三类建议。
+  - 新增 `lib/courseware-adoption-advice.test.ts`，覆盖质量提升、仍需复核、质量下降三种情况。
+  - 重写 `courseware-revision-comparison.tsx` 为干净中文版本，并接入课堂采用建议、改动摘要、质量复核摘要、风险确认。
+- 验证：
+  - `npx tsc --noEmit` 通过。
+  - 课件相关 31 个测试全部通过。
+  - 本地课件详情页重新加载正常，浏览器 console 无应用错误。
+## P2 阶段41：优化候选版入口体验整理
+
+- 当前状态：已完成。
+- 本阶段目标：让老师清楚知道“生成优化版本”不会直接覆盖正式课件，而是生成一个可对比、可采用、可放弃的候选版。
+- 新增能力：
+  - 新增 `lib/courseware-improve-ui.ts` 和测试，统一优化按钮文案。
+  - 重写 `courseware-quality-improver.tsx` 为清晰中文版本。
+  - 优化入口明确提示：候选版确认前不会覆盖当前课件，也不会影响学生端。
+- 验证：
+  - `npx tsc --noEmit` 通过。
+  - 课件相关 34 个测试全部通过。
+## P2 阶段42：教师人工验收清单
+
+- 当前状态：已完成。
+- 本阶段目标：把“内容是否有效”落实到老师上课前可检查的维度，而不是只依赖 AI 自动评分。
+- 新增能力：
+  - 新增 `lib/courseware-human-review.ts` 和测试，生成教师人工验收清单。
+  - 新增 `courseware-human-review-checklist.tsx`，在课件详情页展示 4 个验收维度：数学内容正确性、推导过程完整性、课堂投屏可用性、学生课后复习可用性。
+  - 自动根据质量检查失败项标记“重点复核”。
+- 验证：
+  - `npx tsc --noEmit` 通过。
+  - 课件相关 36 个测试全部通过。
+  - 浏览器验证：课件详情页出现“教师人工验收”和“上课前建议重点看这 4 件事”，console 无应用错误。
+## P2 阶段43：发布到学生端质量风险确认
+
+- 当前状态：已完成。
+- 本阶段目标：正式发布给学生前，如果课件仍有必选质量项未通过，老师需要显式确认风险，避免低质量内容误发布。
+- 新增能力：
+  - 新增 `lib/courseware-publish-guard.ts` 和测试，判断发布/取消发布是否需要质量风险确认。
+  - 更新 `setCoursewarePublishedAction`：发布时重新评估课件质量，未通过必选项且未确认风险时跳转 `publish=needs-quality-confirmation`。
+  - 更新课件详情页发布区域：必要时显示“我已复核质量风险，确认仍要发布给学生端”勾选项。
+- 验证：
+  - `npx tsc --noEmit` 通过。
+  - 课件相关 40 个测试全部通过。
+  - 未登录访问课件详情仍返回 307。
+  - 浏览器重载课件详情页无应用 console error。
+## P2 阶段44：优化候选版常用指令预设
+
+- 当前状态：已完成。
+- 本阶段目标：给老师更多可控调整空间，不要求老师懂 Prompt，也能快速指定优化方向。
+- 新增能力：
+  - 新增 `lib/courseware-improve-presets.ts` 和测试。
+  - 在“生成优化候选版”入口增加常用按钮：补全推导、讲得更慢、减少 AI 腔、优化投屏。
+  - 点击预设会把对应要求写入老师补充优化要求文本框，再随 improve 请求提交给 AI。
+- 验证：
+  - `npx tsc --noEmit` 通过。
+  - 课件相关 43 个测试全部通过。
+  - 浏览器验证：页面出现“补全推导”“减少 AI 腔”“优化投屏”，console 无应用错误。

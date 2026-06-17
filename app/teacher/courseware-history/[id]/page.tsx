@@ -9,6 +9,7 @@ import {
   getCoursewareQualityIssues,
   type CoursewareQualityReport,
 } from "@/lib/courseware-quality";
+import { getLatestPendingCoursewareRevisionRecord } from "@/lib/courseware-revisions";
 import { normalizeCoursewareStoryboardsForDisplay } from "@/lib/courseware-storyboard";
 import type { CoursewareJson } from "@/lib/courseware-types";
 import { getCoursewareById } from "@/lib/coursewares";
@@ -16,6 +17,9 @@ import { createClient } from "@/lib/supabase/server";
 import { setCoursewarePublishedAction } from "../actions";
 import { CoursewareJsonEditor } from "./courseware-json-editor";
 import { DynamicCoursewareGenerator } from "./dynamic-courseware-generator";
+import { CoursewareHumanReviewChecklist } from "./courseware-human-review-checklist";
+import { CoursewareQualityImprover } from "./courseware-quality-improver";
+import { CoursewareRevisionComparison } from "./courseware-revision-comparison";
 
 type CoursewareHistoryDetailPageProps = {
   params: Promise<{
@@ -149,7 +153,13 @@ function AssetMetadataPanel({ metadata }: { metadata: CoursewareAssetMetadata })
   );
 }
 
-function ContentQualityPanel({ report }: { report: CoursewareQualityReport }) {
+function ContentQualityPanel({
+  report,
+  coursewareId,
+}: {
+  report: CoursewareQualityReport;
+  coursewareId: string;
+}) {
   const issues = getCoursewareQualityIssues(report);
   const requiredIssues = issues.filter((issue) => issue.severity === "required");
   const recommendedIssues = issues.filter((issue) => issue.severity === "recommended");
@@ -233,6 +243,12 @@ function ContentQualityPanel({ report }: { report: CoursewareQualityReport }) {
           当前课件已通过全部内容效果检查。仍建议老师课前按投屏预览完整播放一遍。
         </p>
       )}
+
+      <CoursewareQualityImprover
+        coursewareId={coursewareId}
+        issueCount={issues.length}
+        passedRequired={report.passedRequired}
+      />
     </section>
   );
 }
@@ -251,6 +267,17 @@ export default async function CoursewareHistoryDetailPage({
   const qualityReport = structured
     ? assetMetadata?.content_quality ?? assessCoursewareQuality(structured)
     : null;
+  const pendingRevision =
+    record && structured ? await getLatestPendingCoursewareRevisionRecord(supabase, record.id) : null;
+  const candidateStructured =
+    pendingRevision && isCoursewareJson(pendingRevision.candidate_content_json)
+      ? pendingRevision.candidate_content_json
+      : null;
+  const revisionQualityBefore =
+    pendingRevision?.quality_before ?? (structured ? assessCoursewareQuality(structured) : null);
+  const revisionQualityAfter =
+    pendingRevision?.quality_after ??
+    (candidateStructured ? assessCoursewareQuality(candidateStructured) : null);
   const focusPracticeIndex = structured
     ? parsePracticeIndex(query.practice, structured.practice_items.length)
     : null;
@@ -265,6 +292,8 @@ export default async function CoursewareHistoryDetailPage({
       ? "课件已发布到学生端。"
       : query.publish === "unpublished"
         ? "课件已从学生端取消发布。"
+        : query.publish === "needs-quality-confirmation"
+          ? "课件仍有必选质量项未通过，请勾选风险确认后再发布。"
         : query.publish === "failed"
           ? "发布状态更新失败，请稍后重试。"
           : null;
@@ -381,6 +410,19 @@ export default async function CoursewareHistoryDetailPage({
                     name="isPublished"
                     value={record.is_published ? "false" : "true"}
                   />
+                  {!record.is_published && qualityReport && !qualityReport.passedRequired ? (
+                    <label className="mb-3 flex items-start gap-3 rounded-lg bg-amber-50 px-3 py-3 text-xs leading-5 text-amber-900 ring-1 ring-amber-100">
+                      <input
+                        type="checkbox"
+                        name="confirmQualityRisk"
+                        value="true"
+                        className="mt-0.5 h-4 w-4 rounded border-amber-300 text-emerald-600"
+                      />
+                      <span>
+                        我已复核质量风险，确认仍要发布给学生端。
+                      </span>
+                    </label>
+                  ) : null}
                   <button
                     type="submit"
                     disabled={!structured}
@@ -405,7 +447,27 @@ export default async function CoursewareHistoryDetailPage({
 
             {assetMetadata ? <AssetMetadataPanel metadata={assetMetadata} /> : null}
 
-            {qualityReport ? <ContentQualityPanel report={qualityReport} /> : null}
+            {qualityReport ? (
+              <ContentQualityPanel report={qualityReport} coursewareId={record.id} />
+            ) : null}
+
+            {qualityReport ? <CoursewareHumanReviewChecklist report={qualityReport} /> : null}
+
+            {structured &&
+            candidateStructured &&
+            pendingRevision &&
+            revisionQualityBefore &&
+            revisionQualityAfter ? (
+              <CoursewareRevisionComparison
+                coursewareId={record.id}
+                revisionId={pendingRevision.id}
+                currentCourseware={displayStructured ?? structured}
+                candidateCourseware={candidateStructured}
+                qualityBefore={revisionQualityBefore}
+                qualityAfter={revisionQualityAfter}
+                instruction={pendingRevision.instruction}
+              />
+            ) : null}
 
             {structured ? (
               <section className="rounded-2xl border border-teal-200 bg-white p-6 shadow-sm">

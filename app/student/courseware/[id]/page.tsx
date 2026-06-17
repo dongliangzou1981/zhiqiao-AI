@@ -4,6 +4,7 @@ import { normalizeCoursewareStoryboardsForDisplay } from "@/lib/courseware-story
 import type { CoursewareJson } from "@/lib/courseware-types";
 import { createClient } from "@/lib/supabase/server";
 import { CoursewarePlayerClient } from "./courseware-player-client";
+import type { StudentCoursewareFeedback } from "./student-courseware-feedback-panel";
 
 export const metadata: Metadata = {
   title: "课件学习 · 知桥AI",
@@ -40,6 +41,8 @@ type StudentCoursewareProgress = {
   last_viewed_at: string;
   completed_at: string | null;
 };
+
+type StudentCoursewareFeedbackRow = StudentCoursewareFeedback;
 
 function isCoursewareJson(value: unknown): value is CoursewareJson {
   return Boolean(
@@ -153,6 +156,15 @@ export default async function CoursewarePlayerPage({
     )
     .eq("courseware_id", id)
     .maybeSingle();
+
+  const { data: feedback } = await supabase
+    .from("student_courseware_feedback")
+    .select(
+      "id, courseware_id, knowledge_point_code, knowledge_point_name, understanding_level, need_teacher_help, feedback_text, updated_at"
+    )
+    .eq("courseware_id", id)
+    .maybeSingle();
+
   const displayCourseware = normalizeCoursewareStoryboardsForDisplay(courseware.content_json);
 
   return (
@@ -162,6 +174,7 @@ export default async function CoursewarePlayerPage({
       practiceRecords={Array.from(latestPracticeRecords.values())}
       createdAt={courseware.created_at as string}
       initialProgress={(progress as StudentCoursewareProgress | null) ?? null}
+      initialFeedback={(feedback as StudentCoursewareFeedbackRow | null) ?? null}
       focusPracticeIndex={parsePracticeIndex(
         query.practice,
         displayCourseware.practice_items.length

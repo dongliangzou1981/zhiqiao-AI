@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getProfile } from "@/lib/auth/profile";
 import { getCoursewareAssetMetadata } from "@/lib/courseware-asset";
+import { assessCoursewareQuality } from "@/lib/courseware-quality";
+import { getCoursewarePublishGuard } from "@/lib/courseware-publish-guard";
 import type { CoursewareJson } from "@/lib/courseware-types";
 import { createClient } from "@/lib/supabase/server";
 
@@ -24,6 +26,7 @@ function isCoursewareJson(value: unknown): value is CoursewareJson {
 export async function setCoursewarePublishedAction(formData: FormData) {
   const id = getRequiredString(formData, "id");
   const isPublished = getRequiredString(formData, "isPublished") === "true";
+  const confirmQualityRisk = getRequiredString(formData, "confirmQualityRisk") === "true";
 
   if (!id) {
     redirect("/teacher/courseware-history");
@@ -54,11 +57,27 @@ export async function setCoursewarePublishedAction(formData: FormData) {
     redirect(`/teacher/courseware-history/${id}?publish=failed`);
   }
 
-  const contentJson = isCoursewareJson(existingRecord?.content_json)
+  const existingCoursewareJson = isCoursewareJson(existingRecord?.content_json)
+    ? existingRecord.content_json
+    : null;
+  const contentQuality = existingCoursewareJson ? assessCoursewareQuality(existingCoursewareJson) : null;
+  if (isPublished && contentQuality) {
+    const publishGuard = getCoursewarePublishGuard({
+      publishing: true,
+      quality: contentQuality,
+      teacherConfirmedRisk: confirmQualityRisk,
+    });
+
+    if (!publishGuard.canPublishChange) {
+      redirect(`/teacher/courseware-history/${id}?publish=needs-quality-confirmation`);
+    }
+  }
+
+  const contentJson = existingCoursewareJson
     ? {
-        ...existingRecord.content_json,
+        ...existingCoursewareJson,
         asset_metadata: {
-          ...getCoursewareAssetMetadata(existingRecord.content_json),
+          ...getCoursewareAssetMetadata(existingCoursewareJson),
           visibility: isPublished ? "class" : "private",
           quality_status: isPublished ? "teacher_verified" : "draft",
         },
