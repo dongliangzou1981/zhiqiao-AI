@@ -1,4 +1,6 @@
-export type FeedbackLoopPreflightStatus = "pass" | "fail" | "skip";
+import { buildFeedbackLoopBrowserAcceptancePlan } from "./feedback-loop-browser-acceptance";
+
+export type FeedbackLoopPreflightStatus = "pass" | "fail" | "skip" | "blocked";
 
 export type FeedbackLoopPreflightCheck = {
   name: string;
@@ -63,6 +65,7 @@ export function buildFeedbackLoopPreflightChecks(
   const hasServiceRole = hasValue(input.env.SUPABASE_SERVICE_ROLE_KEY);
   const canCheckSupabase = hasSupabaseUrl && hasServiceRole;
   const docsReady = input.docs.acceptanceChecklist && input.docs.teacherTrialGuide;
+  const browserAcceptancePlan = buildFeedbackLoopBrowserAcceptancePlan({ env: input.env });
 
   const checks: FeedbackLoopPreflightCheck[] = [
     {
@@ -79,6 +82,14 @@ export function buildFeedbackLoopPreflightChecks(
     },
     checkHttpStatus("Login route", input.http?.loginStatus, [200]),
     checkHttpStatus("Teacher analytics route", input.http?.analyticsStatus, [200, 307, 308]),
+    {
+      name: "Browser acceptance readiness",
+      status: browserAcceptancePlan.status === "ready" ? "pass" : "blocked",
+      detail:
+        browserAcceptancePlan.status === "ready"
+          ? `ready: ${browserAcceptancePlan.steps.length} browser acceptance steps configured.`
+          : `blocked: missing config ${browserAcceptancePlan.missingConfig.join(", ")}.`,
+    },
   ];
 
   if (!canCheckSupabase || !input.supabase) {
@@ -111,5 +122,7 @@ export function formatFeedbackLoopPreflightSummary(
   const passed = checks.filter((check) => check.status === "pass").length;
   const failed = checks.filter((check) => check.status === "fail").length;
   const skipped = checks.filter((check) => check.status === "skip").length;
-  return `${passed} passed, ${failed} failed, ${skipped} skipped`;
+  const blocked = checks.filter((check) => check.status === "blocked").length;
+  const blockedText = blocked > 0 ? `, ${blocked} blocked` : "";
+  return `${passed} passed, ${failed} failed, ${skipped} skipped${blockedText}`;
 }

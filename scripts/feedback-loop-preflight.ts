@@ -55,7 +55,13 @@ async function canQueryTable(
 
 function printCheck(check: FeedbackLoopPreflightCheck) {
   const prefix =
-    check.status === "pass" ? "[PASS]" : check.status === "fail" ? "[FAIL]" : "[SKIP]";
+    check.status === "pass"
+      ? "[PASS]"
+      : check.status === "fail"
+        ? "[FAIL]"
+        : check.status === "blocked"
+          ? "[BLOCKED]"
+          : "[SKIP]";
   console.log(`${prefix} ${check.name}: ${check.detail}`);
 }
 
