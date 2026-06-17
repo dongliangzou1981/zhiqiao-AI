@@ -651,3 +651,122 @@
 - API 验证：
   - 未登录调用候选版 apply API 返回 401。
   - 未登录访问课件详情仍返回 307。
+
+## P2 阶段45-48验证：学生反馈驱动的课件质量闭环
+
+- 已新增统一验证入口：
+  - `npm run typecheck`
+  - `npm test`
+  - `npm run test:courseware`
+- 已应用并确认远端 Supabase 迁移/表可用：
+  - `courseware_revisions: OK`
+  - `student_courseware_feedback: OK`
+  - `student_review_tasks.task_type = teacher_review: OK`
+- TypeScript 验证通过：
+  - `npm run typecheck`
+- 自动化测试通过：
+  - `npm test`
+  - 结果：64 个测试全部通过。
+  - `npm run test:courseware`
+  - 结果：46 个课件相关测试全部通过。
+- 静态检查通过：
+  - `git diff --check`
+  - 结果：退出码 0；仅提示 Windows LF/CRLF 换行转换。
+- 代码验证：
+  - 教师学习数据页“学生请求老师再讲”已提供进入课件优化、查看来源课件、查看资源和布置复习入口。
+  - 课件详情页支持 `?feedback=student`，会读取该课件下学生负反馈并预填优化候选版补充要求。
+  - `buildCoursewareFeedbackImprovementSummary` 已覆盖空反馈、单个没看懂、多人请求跟进和长文本截断。
+  - 掌握度刷新已读取 `student_courseware_feedback`，并按轻量规则处理没看懂、部分看懂和已看懂反馈。
+  - 教师学习数据页知识点汇总已展示反馈人数、需要跟进人数和最近反馈时间。
+  - 新增 `POST /api/teacher-review-assignment`，请求体为 `{ knowledgePointCode, studentIds, dueDate }`。
+  - 学生复习页和完成复习 API 已支持 `teacher_review` 类型。
+- 安全边界确认：
+  - 学生反馈不会自动调用 AI。
+  - 反馈预填只进入老师可编辑的补充要求。
+  - 生成候选版、采用新版和发布给学生仍需要老师手动确认。
+- 端到端 HTTP/RLS 验证通过：
+  - 使用临时教师、临时学生、临时教师-学生关联和临时已发布课件。
+  - 学生调用 `POST /api/student-courseware-feedback` 提交“没看懂 + 希望老师再讲”，返回 200。
+  - 学生调用 `POST /api/student-mastery/refresh` 后，掌握度原因包含学生反馈信号，结果为 `needs_work`。
+  - 教师登录态访问 `/teacher/analytics` 返回 200，页面包含该学生反馈文本。
+  - 教师登录态访问 `/teacher/courseware-history/{id}?feedback=student` 返回 200，页面包含“来自学生反馈”和该反馈文本。
+  - 已用待采用候选记录验证 `POST /api/courseware/{id}/revisions/{revisionId}/apply`，返回 200；正式课件未发布状态保持为 `false`。
+  - 已通过教师端 Server Action 发布课件，跳转到 `?publish=published`，数据库 `is_published=true` 且 `asset_metadata.visibility=class`。
+  - 教师调用 `POST /api/teacher-review-assignment` 创建 `teacher_review` 复习任务，返回 200。
+  - 学生访问 `/student/review?code=...` 返回 200 并包含任务。
+  - 学生调用 `POST /api/student-review` 完成任务，返回 200，数据库状态为 `completed`。
+  - 临时任务、课件、教师用户、学生用户均已清理。
+- AI 优化接口验证状态：
+  - 本地 dev server 日志显示真实 `POST /api/courseware/{id}/improve` 曾返回 200，但耗时约 304 秒和 609 秒。
+  - 因客户端等待响应头超时，本次完整闭环的“采用新版 -> 发布 -> 复习任务”后半段使用临时待采用候选记录验证，没有再次等待真实 AI 生成。
+- 继续开发验证状态：
+  - `POST /api/courseware/{id}/improve` 现只保留结构化课件 AI 生成，互动投屏页改由本地 `courseware-template-v1` 根据生成 JSON 渲染。
+  - `npx tsx --test lib/courseware-html.test.ts`：通过，2 项测试通过；覆盖本地模板的分页、投屏尺寸、版式数量和必选质量项。
+
+## P2 阶段49-53验证：发布前稳定化与小规模试用准备
+
+- 阶段49浏览器验收准备：
+  - 新增 `docs/feedback-loop-acceptance-checklist.md`，固定学生反馈 -> 教师学习数据页 -> 课件优化候选版 -> 采用新版 -> 发布 -> 老师布置复习 -> 学生完成复习的验收步骤。
+  - 验收清单明确记录前置条件、自动化基线、浏览器预期结果和证据模板。
+- 阶段50优化接口可靠性：
+  - `POST /api/courseware/{id}/improve` 返回 `timings.totalMs/jsonMs/htmlMs/saveMs`。
+  - `POST /api/courseware/{id}/improve` 错误响应返回当前 `stage`，便于定位卡在结构化生成、本地投屏页渲染还是保存候选版。
+  - 教师端生成优化候选版时新增等待提示，明确长耗时来自结构化内容生成，且完成前不会覆盖正式课件。
+- 阶段51教师反馈工作台：
+  - 教师学习数据页“学生请求老师再讲”新增跟进状态列。
+  - 跟进状态区分“待跟进”“已布置复习”“已有优化候选”“已采用新版”“已发布新版”。
+  - 顶部角标改为“待跟进 / 待关注”口径，避免老师重复处理同一批反馈。
+- 阶段52发布质量清理：
+  - `docs/risks_discrepancies.md` 已修正统一测试入口和远端 `courseware_revisions` 迁移的过期风险描述。
+- 阶段53试用准备：
+  - 新增 `docs/teacher-trial-feedback-loop-guide.md`，用于小规模教师试用。
+  - 试用说明明确当前边界：不是完整学情诊断、不是完整作业系统、不会自动采用或发布 AI 候选版。
+- 自动化回归：
+  - `npm run typecheck`：通过。
+  - `npm test`：70 个测试全部通过。
+  - `npm run test:courseware`：46 个课件相关测试全部通过。
+  - `git diff --check`：退出码 0；仅提示 Windows LF/CRLF 换行转换。
+- 浏览器烟测：
+  - 未登录访问 `/teacher/analytics` 返回 307，跳转登录。
+  - `/auth/login` 返回 200。
+  - Playwright 打开登录页成功，页面显示“登录”“邮箱”“密码”“注册”。
+  - 控制台仅有既有 `/favicon.ico` 404，不属于本阶段业务错误。
+
+## P2 阶段54验证：反馈闭环预检工具
+
+- 新增 `npm run smoke:feedback-loop`。
+- 新增 `scripts/feedback-loop-preflight.ts`，用于非破坏性检查：
+  - 验收清单和教师试用说明是否存在。
+  - `/auth/login` 是否可访问。
+  - `/teacher/analytics` 未登录时是否返回 307/308 或登录态下 200。
+  - 配置 Supabase URL 和 service role 时，远端 `courseware_revisions`、`student_courseware_feedback`、`student_review_tasks` 是否可查询。
+- 新增 `lib/feedback-loop-preflight.ts` 和单测，预检判定逻辑与真实 IO 分离。
+- 教师学习数据页的反馈跟进状态推断已抽到 `buildCoursewareFeedbackFollowUpFromSignals`，并补充单测覆盖反馈前动作不算已处理、发布新版优先级最高。
+- 本地执行 `npm run smoke:feedback-loop`：5 项通过，0 失败，0 跳过；已确认验收文档存在、登录页可访问、教师学习数据页未登录跳转、远端关键表可查询。
+
+## P2 阶段55验证：真实账号浏览器验收脚本准备
+
+- 新增 `npm run acceptance:feedback-loop`。
+- 新增 `scripts/feedback-loop-browser-acceptance.ts`，用于真实账号浏览器闭环的半自动验收准备：
+  - 缺少教师账号、学生账号、课件 id 或知识点变量时明确报告阻塞。
+  - 配置完整时输出学生提交反馈、教师学习数据页查看、进入课件详情预填优化要求、生成候选版、采用并发布、布置复习、学生完成复习的逐步 URL、动作、预期结果和证据点。
+  - 脚本不输出密码，也不要求把账号密码写入代码或文档。
+- 新增 `lib/feedback-loop-browser-acceptance.ts` 和单测，计划生成逻辑与 CLI 输出分离。
+- RED 验证：`npx tsx --test lib/feedback-loop-browser-acceptance.test.ts` 先失败于缺少 `./feedback-loop-browser-acceptance` 模块。
+- GREEN 验证：`npx tsx --test lib/feedback-loop-browser-acceptance.test.ts` 通过，3 项测试通过。
+- 本地执行 `npm run acceptance:feedback-loop`：按预期阻塞，报告缺少 6 个 `FEEDBACK_LOOP_*` 配置项并退出 1。
+- 当前本地 `.env.local` 未发现 `FEEDBACK_LOOP_*` 账号变量；真实账号浏览器全链路仍处于账号配置阻塞状态。
+
+## P2 阶段56验证：真实账号浏览器验收收口
+
+- 本阶段按计划先执行 `npm run acceptance:feedback-loop`。
+- 执行结果：按预期阻塞，退出码为 1，报告缺少 6 个真实账号浏览器验收配置项：
+  - `FEEDBACK_LOOP_TEACHER_EMAIL`
+  - `FEEDBACK_LOOP_TEACHER_PASSWORD`
+  - `FEEDBACK_LOOP_STUDENT_EMAIL`
+  - `FEEDBACK_LOOP_STUDENT_PASSWORD`
+  - `FEEDBACK_LOOP_COURSEWARE_ID`
+  - `FEEDBACK_LOOP_KNOWLEDGE_POINT_CODE`
+- 已确认：本地仍未提供真实教师账号、学生账号、已发布课件 id 和知识点 code，因此不能执行真实账号浏览器全链路。
+- 已确认：本阶段没有硬编码账号密码，没有伪造真实验收通过，也没有修改业务代码、数据库结构或依赖。
+- 当前发布试用判断：真实账号浏览器验收仍阻塞，不能仅凭本阶段结果判定可发布试用。
