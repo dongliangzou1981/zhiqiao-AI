@@ -79,3 +79,40 @@ Wait for GPT to generate the next single Codex task.
 ## Next Recommended Step
 
 Wait for GPT to choose the next single controlled task.
+
+# 2026-06-17 Student Login Code Foundation
+
+## Completed
+
+* Added student login code data model draft.
+* Added pure helper functions for generating, normalizing, hashing, verifying, and checking student login code readiness.
+* Added unit tests for the student login code helper.
+* Hardened login code hashing from plain SHA-256 to HMAC-SHA256.
+* Required server-side secret for hashing and verification.
+* Minimized SQL grants so client-facing select does not expose code_hash.
+* Pushed current branch to origin/codex/content-quality-revision.
+
+## Commits
+
+* 80d3a8f fix: harden student login code foundation
+* 8ad033d feat: add student login code foundation
+
+## Current Baseline
+
+* git status --short: clean
+* npm run typecheck: passed
+* npm test: passed, 91 tests passed
+* git diff --check: passed
+* Remote branch updated to 80d3a8f
+
+## Known Remaining Work
+
+* Real student login by code is not implemented yet.
+* No student login page exists yet.
+* No login code exchange API exists yet.
+* No Supabase Auth session creation or restoration flow exists yet.
+* Browser acceptance still needs to be adjusted away from student email/password.
+
+## Next Recommended Step
+
+Wait for GPT to choose the next single controlled task.
