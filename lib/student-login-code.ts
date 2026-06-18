@@ -1,4 +1,4 @@
-import { createHash, randomInt, timingSafeEqual } from "node:crypto";
+import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
 
 export type StudentLoginCodeRecord = {
   code_hash?: string | null;
@@ -27,7 +27,7 @@ export type GenerateStudentLoginCodeOptions = {
 const DEFAULT_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const DEFAULT_SEGMENT_LENGTH = 4;
 const DEFAULT_SEGMENT_COUNT = 3;
-const HASH_PREFIX = "sha256:";
+const HASH_PREFIX = "hmac-sha256:";
 
 function assertPositiveInteger(value: number, label: string) {
   if (!Number.isInteger(value) || value <= 0) {
@@ -62,19 +62,30 @@ export function normalizeStudentLoginCode(value: unknown): string {
     : "";
 }
 
-export function hashStudentLoginCode(code: string): string {
+function assertStudentLoginCodeSecret(secret: string) {
+  if (!secret.trim()) {
+    throw new Error("Student login code secret is required.");
+  }
+}
+
+export function hashStudentLoginCode(code: string, secret: string): string {
+  assertStudentLoginCodeSecret(secret);
+
   const normalizedCode = normalizeStudentLoginCode(code);
-  const digest = createHash("sha256").update(normalizedCode, "utf8").digest("hex");
+  const digest = createHmac("sha256", secret)
+    .update(normalizedCode, "utf8")
+    .digest("hex");
   return `${HASH_PREFIX}${digest}`;
 }
 
 export function verifyStudentLoginCodeHash(
   code: string,
-  expectedHash: string | null | undefined
+  expectedHash: string | null | undefined,
+  secret: string
 ): boolean {
   if (!expectedHash) return false;
 
-  const actualHash = hashStudentLoginCode(code);
+  const actualHash = hashStudentLoginCode(code, secret);
   const actualBuffer = Buffer.from(actualHash, "utf8");
   const expectedBuffer = Buffer.from(expectedHash, "utf8");
 

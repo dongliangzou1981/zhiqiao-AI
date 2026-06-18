@@ -8,6 +8,8 @@ import {
   verifyStudentLoginCodeHash,
 } from "./student-login-code";
 
+const TEST_SECRET = "test-student-login-code-secret";
+
 test("generateStudentLoginCode returns a non-empty login code", () => {
   const code = generateStudentLoginCode();
 
@@ -24,28 +26,44 @@ test("normalizeStudentLoginCode is stable across casing, spaces and hyphens", ()
 
 test("hashStudentLoginCode does not return the plaintext code", () => {
   const code = "ABCD-EF12-GH34";
-  const hash = hashStudentLoginCode(code);
+  const hash = hashStudentLoginCode(code, TEST_SECRET);
 
   assert.notEqual(hash, code);
-  assert.match(hash, /^sha256:[a-f0-9]{64}$/);
+  assert.match(hash, /^hmac-sha256:[a-f0-9]{64}$/);
+});
+
+test("hashStudentLoginCode requires a server-side secret", () => {
+  assert.throws(
+    () => hashStudentLoginCode("ABCD-EF12-GH34", ""),
+    /secret is required/i
+  );
 });
 
 test("verifyStudentLoginCodeHash accepts the correct login code", () => {
-  const hash = hashStudentLoginCode("ABCD-EF12-GH34");
+  const hash = hashStudentLoginCode("ABCD-EF12-GH34", TEST_SECRET);
 
-  assert.equal(verifyStudentLoginCodeHash("abcd ef12 gh34", hash), true);
+  assert.equal(verifyStudentLoginCodeHash("abcd ef12 gh34", hash, TEST_SECRET), true);
 });
 
 test("verifyStudentLoginCodeHash rejects an incorrect login code", () => {
-  const hash = hashStudentLoginCode("ABCD-EF12-GH34");
+  const hash = hashStudentLoginCode("ABCD-EF12-GH34", TEST_SECRET);
 
-  assert.equal(verifyStudentLoginCodeHash("WRONG-CODE", hash), false);
+  assert.equal(verifyStudentLoginCodeHash("WRONG-CODE", hash, TEST_SECRET), false);
+});
+
+test("verifyStudentLoginCodeHash rejects hashes from a different secret", () => {
+  const hash = hashStudentLoginCode("ABCD-EF12-GH34", TEST_SECRET);
+
+  assert.equal(
+    verifyStudentLoginCodeHash("ABCD-EF12-GH34", hash, "different-secret"),
+    false
+  );
 });
 
 test("getStudentLoginCodeReadiness marks expired codes as unusable", () => {
   const readiness = getStudentLoginCodeReadiness(
     {
-      code_hash: hashStudentLoginCode("ABCD-EF12-GH34"),
+      code_hash: hashStudentLoginCode("ABCD-EF12-GH34", TEST_SECRET),
       expires_at: "2026-06-17T00:00:00.000Z",
       revoked_at: null,
     },
@@ -58,7 +76,7 @@ test("getStudentLoginCodeReadiness marks expired codes as unusable", () => {
 
 test("getStudentLoginCodeReadiness marks revoked codes as unusable", () => {
   const readiness = getStudentLoginCodeReadiness({
-    code_hash: hashStudentLoginCode("ABCD-EF12-GH34"),
+    code_hash: hashStudentLoginCode("ABCD-EF12-GH34", TEST_SECRET),
     expires_at: null,
     revoked_at: "2026-06-18T00:00:00.000Z",
   });
@@ -70,7 +88,7 @@ test("getStudentLoginCodeReadiness marks revoked codes as unusable", () => {
 test("getStudentLoginCodeReadiness marks active codes as usable", () => {
   const readiness = getStudentLoginCodeReadiness(
     {
-      code_hash: hashStudentLoginCode("ABCD-EF12-GH34"),
+      code_hash: hashStudentLoginCode("ABCD-EF12-GH34", TEST_SECRET),
       expires_at: "2026-06-19T00:00:00.000Z",
       revoked_at: null,
     },

@@ -1,5 +1,6 @@
 -- Student login code data model draft.
 -- Codes are never stored in plaintext. Only code_hash is persisted.
+-- code_hash must not be selected by client-facing queries.
 
 create table if not exists public.student_login_codes (
   id uuid primary key default gen_random_uuid(),
@@ -20,7 +21,7 @@ create table if not exists public.student_login_codes (
 comment on table public.student_login_codes is
   'Stores hashed student login codes issued by teachers. Plaintext codes must never be stored.';
 comment on column public.student_login_codes.code_hash is
-  'Hash of the student login code. Do not store or log plaintext login codes.';
+  'HMAC hash of the student login code. Do not store plaintext codes or expose code_hash to client-facing queries.';
 
 create unique index if not exists student_login_codes_code_hash_unique_idx
   on public.student_login_codes (code_hash);
@@ -77,7 +78,21 @@ create policy "student_login_codes_teacher_update_own"
   );
 
 revoke all on public.student_login_codes from anon, authenticated;
-grant select, insert on public.student_login_codes to authenticated;
+grant select (
+  id,
+  teacher_id,
+  student_id,
+  expires_at,
+  revoked_at,
+  last_used_at,
+  created_at
+) on public.student_login_codes to authenticated;
+grant insert (
+  teacher_id,
+  student_id,
+  code_hash,
+  expires_at
+) on public.student_login_codes to authenticated;
 grant update (expires_at, revoked_at, last_used_at)
   on public.student_login_codes to authenticated;
 
